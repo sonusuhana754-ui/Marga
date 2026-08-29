@@ -13,6 +13,7 @@ class HealthResponse(BaseModel):
     environment: str = Field(..., description="Deployment environment", examples=["development"])
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Current UTC timestamp")
     uptime_seconds: Optional[float] = Field(None, description="Server uptime in seconds", examples=[124.5])
+    database_connected: bool = Field(..., description="Database connectivity status", examples=[True])
 
     model_config = {
         "json_schema_extra": {
@@ -23,6 +24,7 @@ class HealthResponse(BaseModel):
                 "environment": "development",
                 "timestamp": "2026-08-29T13:00:00Z",
                 "uptime_seconds": 124.5,
+                "database_connected": True,
             }
         }
     }

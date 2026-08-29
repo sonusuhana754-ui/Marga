@@ -42,16 +42,42 @@ def get_request_id(
     return x_request_id
 
 
-# ============================================================================
-# Future Extension Placeholders (Clean Dependency Injection Contracts)
-# ============================================================================
+from typing import AsyncGenerator, Generator
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
+from app.database.session import async_session_factory, sync_session_factory
 
-def get_db() -> Generator:
+
+async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """
-    Dependency placeholder for database session management.
-    Will yield a SQLAlchemy/AsyncSession session when database is configured.
+    Dependency generator for asynchronous database sessions.
+    Automatically handles session commit/rollback and cleanup.
     """
-    raise NotImplementedError("Database dependency not yet configured.")
+    async with async_session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+def get_db() -> Generator[Session, None, None]:
+    """
+    Dependency generator for synchronous database sessions.
+    Useful for synchronous route handlers or integration scripts.
+    """
+    with sync_session_factory() as session:
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
 
 def get_current_user() -> None:
