@@ -1,0 +1,1 @@
+"""MARGA Backend Application Package."""
