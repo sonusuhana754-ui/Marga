@@ -24,6 +24,7 @@ def test_health_check_v1(client: TestClient):
     assert "timestamp" in data
     assert "uptime_seconds" in data
     assert data["uptime_seconds"] >= 0
+    assert data["database_connected"] is True
 
 
 def test_cors_headers(client: TestClient):
