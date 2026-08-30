@@ -11,15 +11,16 @@ import { MapContext } from './context'
 
 maplibregl.setWorkerUrl(workerUrl)
 
-type Phase = 'loading' | 'ready' | 'error'
+type Phase = 'loading' | 'ready' | 'slow'
 
 interface MapCanvasProps {
   children?: ReactNode
 }
 
 /**
- * Full-bleed MapLibre canvas. Children mount only once the style is ready and
- * reach the instance through `useMap()`.
+ * Full-bleed MapLibre canvas. Children mount once the style is ready. A slow
+ * tile provider never blocks the view — it just shows a small note while the
+ * map keeps loading in the background.
  */
 export function MapCanvas({ children }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -53,24 +54,27 @@ export function MapCanvas({ children }: MapCanvasProps) {
       'top-right',
     )
 
-    const onLoad = () => {
-      setMap(instance)
-      setPhase('ready')
+    // As soon as the style spec is usable, hand the map to the context so our
+    // layers mount and render progressively while tiles stream in.
+    const tryMountContext = () => {
+      if (instance.isStyleLoaded()) {
+        setMap((m) => m ?? instance)
+        setPhase('ready')
+      }
     }
+    instance.on('styledata', tryMountContext)
+    instance.on('load', tryMountContext)
+
     const onError = (e: { error?: Error }) => {
       const msg = e.error?.message ?? String(e)
-      // benign: fired when a layer-scoped listener briefly outlives its layer
       if (msg.includes('cannot be queried for features')) return
       console.warn('[maplibre]', msg)
     }
-    // If the style has not loaded within a sensible window, surface it rather
-    // than leaving a black rectangle.
-    const watchdog = window.setTimeout(() => {
-      if (!instance.isStyleLoaded()) setPhase('error')
-    }, 25_000)
-
-    instance.on('load', onLoad)
     instance.on('error', onError)
+
+    const watchdog = window.setTimeout(() => {
+      setPhase((p) => (p === 'ready' ? p : 'slow'))
+    }, 15_000)
 
     if (import.meta.env.DEV) {
       ;(window as unknown as { __map?: MlMap }).__map = instance
@@ -78,7 +82,8 @@ export function MapCanvas({ children }: MapCanvasProps) {
 
     return () => {
       window.clearTimeout(watchdog)
-      instance.off('load', onLoad)
+      instance.off('styledata', tryMountContext)
+      instance.off('load', tryMountContext)
       instance.off('error', onError)
       instance.remove()
       setMap(null)
@@ -89,7 +94,6 @@ export function MapCanvas({ children }: MapCanvasProps) {
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" />
 
-      {/* Depth vignette — decoration only, never intercepts the map. */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -105,15 +109,11 @@ export function MapCanvas({ children }: MapCanvasProps) {
         </div>
       )}
 
-      {phase === 'error' && (
-        <div className="absolute inset-0 grid place-items-center bg-bg/60">
-          <div className="panel max-w-sm p-5 text-center">
-            <p className="text-sm text-ink">Base map didn’t load.</p>
-            <p className="mt-1.5 text-xs text-ink-dim">
-              The tile server may be unreachable on this network. Routes and data
-              still work — reload to retry the map.
-            </p>
-          </div>
+      {phase === 'slow' && (
+        <div className="pointer-events-none absolute bottom-28 left-1/2 -translate-x-1/2">
+          <span className="panel px-3 py-1.5 text-[11px] text-ink-dim">
+            base map loading slowly — routes and data still work
+          </span>
         </div>
       )}
 
