@@ -6,12 +6,13 @@ import { getStream } from '@/api/stream'
 import { AREA, DEFAULT_PROFILE } from '@/config'
 import { mockSingleRoute } from '@/mocks'
 import { DemoCtx } from './demoStore'
-import type { DemoValue, Mode } from './demoStore'
+import type { DemoValue, Mode, View } from './demoStore'
 
 const runDuration = (r: OptimizeResponse) =>
   r.routes.reduce((m, route) => Math.max(m, route.timestamps.at(-1) ?? 0), 0)
 
 export function DemoProvider({ children }: { children: ReactNode }) {
+  const [view, setView] = useState<View>('live')
   const [mode, setModeRaw] = useState<Mode>('fleet')
   const [solver, setSolver] = useState<SolverId>('va_qpso')
   const [status, setStatus] = useState<DemoValue['status']>('idle')
@@ -56,6 +57,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<DemoValue>(
     () => ({
+      view,
       mode,
       solver,
       status,
@@ -64,13 +66,14 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       stream,
       single: mockSingleRoute,
       selectedVehicle,
+      setView,
       setMode,
       setSolver,
       optimize,
       selectVehicle,
       reset,
     }),
-    [mode, solver, status, runs, stream, selectedVehicle, setMode, optimize, selectVehicle, reset],
+    [view, mode, solver, status, runs, stream, selectedVehicle, setMode, optimize, selectVehicle, reset],
   )
 
   return <DemoCtx.Provider value={value}>{children}</DemoCtx.Provider>

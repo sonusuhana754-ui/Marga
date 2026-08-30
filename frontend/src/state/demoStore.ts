@@ -3,8 +3,10 @@ import type { OptimizeResponse, RouteResponse, SolverId, StreamTick } from '@/ty
 
 export type Mode = 'single' | 'fleet'
 export type Status = 'idle' | 'optimizing' | 'ready'
+export type View = 'live' | 'benchmark'
 
 export interface DemoValue {
+  view: View
   mode: Mode
   solver: SolverId
   status: Status
@@ -17,6 +19,7 @@ export interface DemoValue {
   single: RouteResponse
   selectedVehicle: number | null
 
+  setView: (v: View) => void
   setMode: (m: Mode) => void
   setSolver: (s: SolverId) => void
   optimize: () => Promise<void>

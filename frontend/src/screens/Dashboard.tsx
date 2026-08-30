@@ -14,8 +14,10 @@ import { StatusIndicator } from '@/components/chrome/StatusIndicator'
 import { RouteCompare } from '@/components/panels/RouteCompare'
 import { SolverResult } from '@/components/panels/SolverResult'
 import { VehiclePanel } from '@/components/panels/VehiclePanel'
+import { WhyRoute } from '@/components/panels/WhyRoute'
 import { BetaInspector } from '@/components/panels/BetaInspector'
 import { ImpactStrip } from '@/components/panels/ImpactStrip'
+import { BenchmarkView } from '@/components/benchmark/BenchmarkView'
 import { useDemo } from '@/state/demoStore'
 import { useSimClock } from '@/state/simClock'
 import { useStreamTick } from '@/state/useStreamTick'
@@ -24,6 +26,7 @@ import { DEPOT, STOPS, mockImpactSample } from '@/mocks'
 
 export function Dashboard() {
   const {
+    view,
     mode,
     status,
     solver,
@@ -80,50 +83,57 @@ export function Dashboard() {
         <Waypoints depot={DEPOT} stops={STOPS} />
       </MapCanvas>
 
+      {view === 'benchmark' && <BenchmarkView />}
+
       <TopBar />
 
-      <div className="pointer-events-none absolute inset-0 z-10">
-        <div className="pointer-events-auto absolute left-4 top-20 flex w-[272px] flex-col gap-3">
-          <ControlDock />
-          {mode === 'single' && <RouteCompare route={single} profile={DEFAULT_PROFILE} />}
-          {fleetReady && <SolverResult runs={runs} active={solver} />}
-        </div>
-
-        {fleetReady && (streamTick || selectedRoute) && (
-          <div className="pointer-events-auto absolute right-4 top-20 flex w-[300px] flex-col gap-3">
-            {selectedRoute && (
-              <VehiclePanel
-                route={selectedRoute}
-                profile={DEFAULT_PROFILE}
-                onClose={() => selectVehicle(null)}
-              />
-            )}
-            {stream && stream.length > 0 && (
-              <BetaInspector
-                series={stream}
-                current={streamTick}
-                overlayOn={overlayOn}
-                onToggleOverlay={() => setOverlayOn((v) => !v)}
-              />
-            )}
+      {view === 'live' && (
+        <div className="pointer-events-none absolute inset-0 z-10">
+          <div className="pointer-events-auto absolute left-4 top-20 flex w-[272px] flex-col gap-3">
+            <ControlDock />
+            {mode === 'single' && <RouteCompare route={single} profile={DEFAULT_PROFILE} />}
+            {fleetReady && <SolverResult runs={runs} active={solver} />}
           </div>
-        )}
 
-        {fleetReady && (
-          <div className="pointer-events-auto absolute left-1/2 top-4 -translate-x-1/2">
-            <StatusIndicator />
+          {fleetReady && (streamTick || selectedRoute) && (
+            <div className="pointer-events-auto absolute right-4 top-20 flex max-h-[calc(100dvh-8rem)] w-[300px] flex-col gap-3 overflow-y-auto pb-2">
+              {selectedRoute && (
+                <>
+                  <VehiclePanel
+                    route={selectedRoute}
+                    profile={DEFAULT_PROFILE}
+                    onClose={() => selectVehicle(null)}
+                  />
+                  <WhyRoute route={selectedRoute} />
+                </>
+              )}
+              {stream && stream.length > 0 && (
+                <BetaInspector
+                  series={stream}
+                  current={streamTick}
+                  overlayOn={overlayOn}
+                  onToggleOverlay={() => setOverlayOn((v) => !v)}
+                />
+              )}
+            </div>
+          )}
+
+          {fleetReady && (
+            <div className="pointer-events-auto absolute left-1/2 top-4 -translate-x-1/2">
+              <StatusIndicator />
+            </div>
+          )}
+
+          <div className="pointer-events-auto absolute bottom-4 left-1/2 flex w-[min(680px,calc(100vw-2rem))] -translate-x-1/2 flex-col items-center gap-3">
+            {fleetReady && <TransportControls />}
+            {impact && <ImpactStrip impact={impact} />}
           </div>
-        )}
-
-        <div className="pointer-events-auto absolute bottom-4 left-1/2 flex w-[min(680px,calc(100vw-2rem))] -translate-x-1/2 flex-col items-center gap-3">
-          {fleetReady && <TransportControls />}
-          {impact && <ImpactStrip impact={impact} />}
         </div>
-      </div>
+      )}
 
       <div className="pointer-events-none absolute bottom-1.5 left-4 z-10">
         <span className="label-mono !text-[9px] !text-ink-mute/60">
-          MARGA · block 5 · mock data · area not locked
+          MARGA · block 6 · mock data · area not locked
         </span>
       </div>
     </div>
