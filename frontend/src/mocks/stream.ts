@@ -1,0 +1,117 @@
+import type {
+  EdgeCongestion,
+  StreamTick,
+  ZoneVolatility,
+} from '@/types/api'
+import { BETA_CEILING } from '@/config'
+import { mockGraph } from './graph'
+import { mulberry32 } from './rng'
+
+/** Seconds of simulated time between stream ticks. */
+export const TICK_SECONDS = 10
+
+/**
+ * A scripted volatility time-series for the demo. Everything is calm until a
+ * traffic surge builds in one zone (~tick 42), volatility crosses the
+ * re-optimization threshold (~tick 50), that zone is re-solved, and things
+ * settle by ~tick 75. Deterministic.
+ *
+ * β and σ² are generated as correlated series so the inspector can show them
+ * moving together — the real relationship comes from the backend / the paper;
+ * the frontend only visualises whatever it receives.
+ */
+export function mockStream(durationSeconds: number): StreamTick[] {
+  const zones = mockGraph.zones
+  const hotZone = zones[1]?.zone_id ?? 'z_1'
+  const rnd = mulberry32(4471)
+  const nTicks = Math.max(2, Math.ceil(durationSeconds / TICK_SECONDS) + 1)
+
+  // a few edges near the hot zone that will congest during the surge
+  const hotCentroid = centroid(zones[1]?.polygon ?? [[77.63, 12.94]])
+  const congestingEdges = [...mockGraph.edges]
+    .sort((a, b) => dist(mid(a.geometry), hotCentroid) - dist(mid(b.geometry), hotCentroid))
+    .slice(0, 5)
+
+  const SURGE_START = 42
+  const SURGE_PEAK = 52
+  const SURGE_END = 76
+
+  const surge = (t: number) => {
+    if (t < SURGE_START || t > SURGE_END) return 0
+    const half = SURGE_PEAK - SURGE_START
+    const x = t <= SURGE_PEAK ? (t - SURGE_START) / half : (SURGE_END - t) / (SURGE_END - SURGE_PEAK)
+    return Math.max(0, Math.min(1, x))
+  }
+
+  const ticks: StreamTick[] = []
+  for (let i = 0; i < nTicks; i++) {
+    const s = surge(i)
+
+    const zone_volatility: ZoneVolatility[] = zones.map((z) => {
+      const noise = 0.04 + rnd() * 0.08
+      const isHot = z.zone_id === hotZone
+      const sigma_sq = isHot ? noise + s * 0.82 : noise + s * 0.12 * rnd()
+      // β tracks volatility: calm ≈ 1.0, volatile pushes toward the ceiling
+      const beta = 1.0 + Math.min(sigma_sq, 1) * (BETA_CEILING - 1.0) * (isHot ? 0.9 : 0.4)
+      return {
+        zone_id: z.zone_id,
+        sigma_sq: round(sigma_sq),
+        beta: round(beta),
+      }
+    })
+
+    const hotSigma = zone_volatility.find((z) => z.zone_id === hotZone)?.sigma_sq ?? 0
+    const background_traffic: EdgeCongestion[] = congestingEdges.map((e, ei) => {
+      const level: EdgeCongestion['level'] =
+        s > 0.55 && ei < 4 ? 'heavy' : s > 0.2 ? 'moderate' : 'free'
+      return {
+        edge_id: e.edge_id,
+        speed_kmh: level === 'heavy' ? 8 + rnd() * 6 : level === 'moderate' ? 18 + rnd() * 8 : 34 + rnd() * 10,
+        level,
+      }
+    })
+
+    let state: StreamTick['optimization_status']['state'] = 'stable'
+    let zone_id: string | undefined
+    if (i >= 51 && i <= 58) {
+      state = 'reoptimizing'
+      zone_id = hotZone
+    } else if (hotSigma >= 0.6) {
+      state = 'threshold_crossed'
+      zone_id = hotZone
+    }
+
+    ticks.push({
+      tick: i,
+      vehicle_positions: [],
+      background_traffic,
+      zone_volatility,
+      optimization_status: { state, threshold: 0.6, cooldown_s: 30, zone_id },
+    })
+  }
+
+  return ticks
+}
+
+export function tickAt(series: StreamTick[], simSeconds: number): StreamTick | null {
+  if (series.length === 0) return null
+  const i = Math.max(0, Math.min(series.length - 1, Math.floor(simSeconds / TICK_SECONDS)))
+  return series[i]
+}
+
+const round = (n: number) => Number(n.toFixed(3))
+const mid = (g: [number, number][]): [number, number] => {
+  const a = g[0]
+  const b = g[g.length - 1]
+  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+}
+const dist = (a: [number, number], b: [number, number]) => Math.hypot(a[0] - b[0], a[1] - b[1])
+function centroid(poly: [number, number][]): [number, number] {
+  let x = 0
+  let y = 0
+  for (const [lng, lat] of poly) {
+    x += lng
+    y += lat
+  }
+  return [x / poly.length, y / poly.length]
+}

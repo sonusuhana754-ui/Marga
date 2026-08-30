@@ -14,7 +14,7 @@ export function VehiclePanel({ route, profile, onClose }: VehiclePanelProps) {
   const stops = Math.max(0, route.stop_sequence.length - 2) // minus depot at both ends
 
   return (
-    <div className="panel w-[264px] overflow-hidden">
+    <div className="panel w-full overflow-hidden">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <div className="flex items-center gap-2">
           <span

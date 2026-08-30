@@ -1,48 +1,60 @@
+import { useEffect, useState } from 'react'
 import { MapCanvas } from '@/components/map/MapCanvas'
 import { RouteLayer } from '@/components/map/RouteLayer'
 import { BlockedEdges } from '@/components/map/BlockedEdges'
 import { FleetLayer } from '@/components/map/FleetLayer'
 import { VehicleMarkers } from '@/components/map/VehicleMarkers'
+import { VolatilityOverlay } from '@/components/map/VolatilityOverlay'
+import { TrafficOverlay } from '@/components/map/TrafficOverlay'
 import { Waypoints } from '@/components/map/Waypoints'
 import { TopBar } from '@/components/chrome/TopBar'
 import { ControlDock } from '@/components/chrome/ControlDock'
 import { TransportControls } from '@/components/chrome/TransportControls'
+import { StatusIndicator } from '@/components/chrome/StatusIndicator'
 import { RouteCompare } from '@/components/panels/RouteCompare'
 import { SolverResult } from '@/components/panels/SolverResult'
 import { VehiclePanel } from '@/components/panels/VehiclePanel'
+import { BetaInspector } from '@/components/panels/BetaInspector'
 import { ImpactStrip } from '@/components/panels/ImpactStrip'
-import { useEffect } from 'react'
 import { useDemo } from '@/state/demoStore'
 import { useSimClock } from '@/state/simClock'
+import { useStreamTick } from '@/state/useStreamTick'
 import { DEFAULT_PROFILE } from '@/config'
 import { DEPOT, STOPS, mockImpactSample } from '@/mocks'
 
 export function Dashboard() {
-  const { mode, status, solver, runs, activeRun, single, selectedVehicle, selectVehicle } =
-    useDemo()
+  const {
+    mode,
+    status,
+    solver,
+    runs,
+    activeRun,
+    stream,
+    single,
+    selectedVehicle,
+    selectVehicle,
+  } = useDemo()
   const clock = useSimClock()
+  const streamTick = useStreamTick(stream)
+  const [overlayOn, setOverlayOn] = useState(true)
 
   const fleetReady = mode === 'fleet' && status === 'ready' && activeRun !== null
-
-  // keep the sim clock in step with the active run
-  useEffect(() => {
-    if (fleetReady && activeRun) {
-      const dur = activeRun.routes.reduce(
-        (m, r) => Math.max(m, r.timestamps.at(-1) ?? 0),
-        0,
-      )
-      clock.setDuration(dur)
-      clock.seek(0)
-    } else {
-      clock.setDuration(0)
-    }
-  }, [clock, fleetReady, activeRun])
   const selectedRoute =
     fleetReady && selectedVehicle !== null
       ? activeRun!.routes.find((r) => r.vehicle_id === selectedVehicle)
       : undefined
 
   const impact = mode === 'single' ? mockImpactSample : (runs.va_qpso?.impact ?? null)
+
+  useEffect(() => {
+    if (fleetReady && activeRun) {
+      const dur = activeRun.routes.reduce((m, r) => Math.max(m, r.timestamps.at(-1) ?? 0), 0)
+      clock.setDuration(dur)
+      clock.seek(0)
+    } else {
+      clock.setDuration(0)
+    }
+  }, [clock, fleetReady, activeRun])
 
   return (
     <div className="relative h-dvh w-dvw overflow-hidden bg-bg text-ink">
@@ -55,6 +67,8 @@ export function Dashboard() {
         )}
         {fleetReady && (
           <>
+            <VolatilityOverlay tick={streamTick} visible={overlayOn} />
+            <TrafficOverlay tick={streamTick} />
             <FleetLayer
               routes={activeRun!.routes}
               selected={selectedVehicle}
@@ -75,13 +89,29 @@ export function Dashboard() {
           {fleetReady && <SolverResult runs={runs} active={solver} />}
         </div>
 
-        {selectedRoute && (
-          <div className="pointer-events-auto absolute right-4 top-20">
-            <VehiclePanel
-              route={selectedRoute}
-              profile={DEFAULT_PROFILE}
-              onClose={() => selectVehicle(null)}
-            />
+        {fleetReady && (streamTick || selectedRoute) && (
+          <div className="pointer-events-auto absolute right-4 top-20 flex w-[300px] flex-col gap-3">
+            {selectedRoute && (
+              <VehiclePanel
+                route={selectedRoute}
+                profile={DEFAULT_PROFILE}
+                onClose={() => selectVehicle(null)}
+              />
+            )}
+            {stream && stream.length > 0 && (
+              <BetaInspector
+                series={stream}
+                current={streamTick}
+                overlayOn={overlayOn}
+                onToggleOverlay={() => setOverlayOn((v) => !v)}
+              />
+            )}
+          </div>
+        )}
+
+        {fleetReady && (
+          <div className="pointer-events-auto absolute left-1/2 top-4 -translate-x-1/2">
+            <StatusIndicator />
           </div>
         )}
 
@@ -93,7 +123,7 @@ export function Dashboard() {
 
       <div className="pointer-events-none absolute bottom-1.5 left-4 z-10">
         <span className="label-mono !text-[9px] !text-ink-mute/60">
-          MARGA · block 4 · mock data · area not locked
+          MARGA · block 5 · mock data · area not locked
         </span>
       </div>
     </div>

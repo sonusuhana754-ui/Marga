@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { OptimizeResponse, RouteResponse, SolverId } from '@/types/api'
+import type { OptimizeResponse, RouteResponse, SolverId, StreamTick } from '@/types/api'
 
 export type Mode = 'single' | 'fleet'
 export type Status = 'idle' | 'optimizing' | 'ready'
@@ -12,6 +12,8 @@ export interface DemoValue {
   runs: Partial<Record<SolverId, OptimizeResponse>>
   /** the run currently drawn on the map (per `solver`) */
   activeRun: OptimizeResponse | null
+  /** volatility / status time-series for the active run */
+  stream: StreamTick[] | null
   single: RouteResponse
   selectedVehicle: number | null
 
