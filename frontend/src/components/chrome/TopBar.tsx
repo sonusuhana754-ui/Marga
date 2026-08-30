@@ -1,0 +1,59 @@
+import { Play } from 'lucide-react'
+import { AREA } from '@/config'
+
+function MargaMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} fill="none" aria-hidden>
+      <path
+        d="M7 24C12 24 12 9 17.5 9C22 9 22 15 26 9"
+        stroke="var(--color-marga)"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+      <circle cx="7" cy="24" r="3.2" fill="var(--color-marga)" />
+      <circle cx="26" cy="9" r="3.2" fill="var(--color-amber)" />
+    </svg>
+  )
+}
+
+interface TopBarProps {
+  onStartDemo?: () => void
+}
+
+export function TopBar({ onStartDemo }: TopBarProps) {
+  return (
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between p-4">
+      <div className="panel pointer-events-auto flex items-center gap-3 px-3.5 py-2.5">
+        <MargaMark className="h-7 w-7" />
+        <div className="leading-none">
+          <div className="flex items-baseline gap-2">
+            <span className="text-[15px] font-semibold tracking-[0.06em] text-ink">
+              MARGA
+            </span>
+            <span className="text-[12px] font-medium text-ink-mute">Fleet Routing</span>
+          </div>
+          <div className="mt-1 flex items-center gap-1.5">
+            <span
+              className={`inline-block h-1.5 w-1.5 rounded-full ${
+                AREA.locked ? 'bg-green' : 'bg-amber'
+              }`}
+            />
+            <span className="label-mono !text-[9.5px] !tracking-[0.12em] !text-ink-dim">
+              {AREA.label}
+              {!AREA.locked && ' · area not locked'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onStartDemo}
+        className="panel pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-medium text-ink transition-colors hover:text-marga focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marga"
+      >
+        <Play className="h-3.5 w-3.5" fill="currentColor" />
+        Guided demo
+      </button>
+    </header>
+  )
+}

@@ -1,0 +1,18 @@
+{
+  "_comment": "The only hand-authored coordinates in the mock set. Everything else (route geometry that follows real roads) is generated from these by scripts/gen-mocks.mjs. When the backend locks the real sub-graph, edit AREA in src/config.ts, move these points into it, and re-run: npm run gen:mocks",
+  "depot": [77.6230, 12.9455],
+  "destination": [77.6395, 12.9235],
+  "truck_via": [77.6222, 12.9300],
+  "stops": [
+    [77.6250, 12.9420],
+    [77.6282, 12.9376],
+    [77.6301, 12.9339],
+    [77.6327, 12.9299],
+    [77.6352, 12.9264],
+    [77.6238, 12.9322],
+    [77.6322, 12.9236],
+    [77.6360, 12.9310],
+    [77.6274, 12.9268],
+    [77.6345, 12.9345]
+  ]
+}
