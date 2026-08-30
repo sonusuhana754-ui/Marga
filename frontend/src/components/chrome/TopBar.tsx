@@ -51,9 +51,11 @@ export function TopBar() {
           </div>
         </div>
 
-        <div className="panel w-[184px] p-1">
-          <Segmented<View> size="sm" options={VIEW_OPTIONS} value={view} onChange={setView} />
-        </div>
+        {!guided && (
+          <div className="panel w-[184px] p-1">
+            <Segmented<View> size="sm" options={VIEW_OPTIONS} value={view} onChange={setView} />
+          </div>
+        )}
       </div>
 
       <button

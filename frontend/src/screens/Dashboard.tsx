@@ -135,11 +135,11 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="pointer-events-none absolute bottom-1.5 left-4 z-10">
-        <span className="label-mono !text-[9px] !text-ink-mute/60">
-          MARGA · block 6 · mock data · area not locked
-        </span>
-      </div>
+      {import.meta.env.DEV && (
+        <div className="pointer-events-none absolute bottom-1.5 left-4 z-10">
+          <span className="label-mono !text-[9px] !text-ink-mute/50">mock data · placeholder area</span>
+        </div>
+      )}
     </div>
   )
 }
