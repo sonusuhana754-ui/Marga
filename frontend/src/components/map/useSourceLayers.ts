@@ -8,7 +8,6 @@ export type LayerDef =
   | Omit<Extract<LayerSpecification, { type: 'circle' }>, 'source'>
   | Omit<Extract<LayerSpecification, { type: 'fill' }>, 'source'>
   | Omit<Extract<LayerSpecification, { type: 'symbol' }>, 'source'>
-  | Omit<Extract<LayerSpecification, { type: 'heatmap' }>, 'source'>
 
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 

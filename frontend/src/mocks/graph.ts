@@ -56,10 +56,10 @@ function buildGraph(seed = 26137): GraphResponse {
     }
   }
 
-  // Zones in a 4×3 grid over the bbox.
+  // Six zones in a 3×2 grid over the bbox.
   const zones: GraphZone[] = []
-  const zc = 4
-  const zr = 3
+  const zc = 3
+  const zr = 2
   for (let r = 0; r < zr; r++) {
     for (let c = 0; c < zc; c++) {
       const x0 = w + (c / zc) * (e - w)
@@ -94,7 +94,7 @@ export const mockGraph: GraphResponse = buildGraph()
 /** Which zone a point falls in — used to label incidents and volatility. */
 export function zoneAt(point: LngLat): string {
   const [w, s, e, n] = AREA.bbox
-  const c = Math.min(3, Math.max(0, Math.floor(((point[0] - w) / (e - w)) * 4)))
-  const r = Math.min(2, Math.max(0, Math.floor(((point[1] - s) / (n - s)) * 3)))
-  return `z_${r * 4 + c}`
+  const c = Math.min(2, Math.max(0, Math.floor(((point[0] - w) / (e - w)) * 3)))
+  const r = Math.min(1, Math.max(0, Math.floor(((point[1] - s) / (n - s)) * 2)))
+  return `z_${r * 3 + c}`
 }
