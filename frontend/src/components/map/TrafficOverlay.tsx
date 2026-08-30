@@ -1,32 +1,33 @@
 import { useMemo } from 'react'
 import type { StreamTick } from '@/types/api'
-import { mockGraph } from '@/mocks'
 import { featureCollection, lineFeature } from '@/lib/geo'
+import { ROAD_SEGMENT_GEOM } from '@/mocks/roads'
 import { useSourceLayers } from './useSourceLayers'
 import type { LayerDef } from './useSourceLayers'
 
 const LAYERS: LayerDef[] = [
   {
+    id: 'traffic-glow',
+    type: 'line',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': ['match', ['get', 'level'], 'heavy', '#ee6b4d', '#e9b23c'],
+      'line-width': ['match', ['get', 'level'], 'heavy', 13, 'moderate', 9, 0],
+      'line-blur': 6,
+      'line-opacity': ['match', ['get', 'level'], 'free', 0, 'heavy', 0.5, 0.32],
+    },
+  },
+  {
     id: 'traffic-line',
     type: 'line',
-    layout: { 'line-cap': 'round' },
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
-      'line-color': [
-        'match',
-        ['get', 'level'],
-        'heavy',
-        '#ee6b4d',
-        'moderate',
-        '#e9b23c',
-        '#3a4a4e',
-      ],
-      'line-width': ['match', ['get', 'level'], 'heavy', 4, 'moderate', 3, 1.5],
-      'line-opacity': ['match', ['get', 'level'], 'free', 0, 0.8],
+      'line-color': ['match', ['get', 'level'], 'heavy', '#ee6b4d', '#e9b23c'],
+      'line-width': ['match', ['get', 'level'], 'heavy', 3.5, 'moderate', 2.5, 0],
+      'line-opacity': ['match', ['get', 'level'], 'free', 0, 0.85],
     },
   },
 ]
-
-const EDGE_GEOM = new Map(mockGraph.edges.map((e) => [e.edge_id, e.geometry]))
 
 /** Background (external) traffic congestion on the road network. */
 export function TrafficOverlay({ tick }: { tick: StreamTick | null }) {
@@ -34,8 +35,8 @@ export function TrafficOverlay({ tick }: { tick: StreamTick | null }) {
     () =>
       featureCollection(
         (tick?.background_traffic ?? [])
-          .filter((c) => EDGE_GEOM.has(c.edge_id))
-          .map((c) => lineFeature(EDGE_GEOM.get(c.edge_id)!, { level: c.level })),
+          .filter((c) => ROAD_SEGMENT_GEOM.has(c.edge_id))
+          .map((c) => lineFeature(ROAD_SEGMENT_GEOM.get(c.edge_id)!, { level: c.level })),
       ),
     [tick],
   )

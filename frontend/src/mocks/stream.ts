@@ -5,6 +5,7 @@ import type {
 } from '@/types/api'
 import { BETA_CEILING } from '@/config'
 import { mockGraph } from './graph'
+import { ROAD_SEGMENTS } from './roads'
 import { mulberry32 } from './rng'
 
 /** Seconds of simulated time between stream ticks. */
@@ -22,15 +23,25 @@ export const TICK_SECONDS = 10
  */
 export function mockStream(durationSeconds: number): StreamTick[] {
   const zones = mockGraph.zones
-  const hotZone = zones[1]?.zone_id ?? 'z_1'
   const rnd = mulberry32(4471)
   const nTicks = Math.max(2, Math.ceil(durationSeconds / TICK_SECONDS) + 1)
 
-  // a few edges near the hot zone that will congest during the surge
-  const hotCentroid = centroid(zones[1]?.polygon ?? [[77.63, 12.94]])
-  const congestingEdges = [...mockGraph.edges]
-    .sort((a, b) => dist(mid(a.geometry), hotCentroid) - dist(mid(b.geometry), hotCentroid))
-    .slice(0, 5)
+  // hot zone = the one containing the most real road-segment midpoints, so the
+  // surge always lands where the fleet actually drives
+  const hotZoneObj =
+    zones
+      .map((z) => ({
+        z,
+        count: ROAD_SEGMENTS.filter((s) => pointInPoly(s.mid, z.polygon)).length,
+      }))
+      .sort((a, b) => b.count - a.count)[0]?.z ?? zones[0]
+  const hotZone = hotZoneObj.zone_id
+  const hotCentroid = centroid(hotZoneObj.polygon)
+
+  const congestingEdges = [...ROAD_SEGMENTS]
+    .filter((s) => pointInPoly(s.mid, hotZoneObj.polygon))
+    .sort((a, b) => dist(a.mid, hotCentroid) - dist(b.mid, hotCentroid))
+    .slice(0, 6)
 
   const SURGE_START = 42
   const SURGE_PEAK = 52
@@ -65,7 +76,7 @@ export function mockStream(durationSeconds: number): StreamTick[] {
       const level: EdgeCongestion['level'] =
         s > 0.55 && ei < 4 ? 'heavy' : s > 0.2 ? 'moderate' : 'free'
       return {
-        edge_id: e.edge_id,
+        edge_id: e.id,
         speed_kmh: level === 'heavy' ? 8 + rnd() * 6 : level === 'moderate' ? 18 + rnd() * 8 : 34 + rnd() * 10,
         level,
       }
@@ -100,12 +111,19 @@ export function tickAt(series: StreamTick[], simSeconds: number): StreamTick | n
 }
 
 const round = (n: number) => Number(n.toFixed(3))
-const mid = (g: [number, number][]): [number, number] => {
-  const a = g[0]
-  const b = g[g.length - 1]
-  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-}
 const dist = (a: [number, number], b: [number, number]) => Math.hypot(a[0] - b[0], a[1] - b[1])
+
+/** point-in-rectangle (zones are axis-aligned rectangles) */
+function pointInPoly(p: [number, number], poly: [number, number][]): boolean {
+  const xs = poly.map((c) => c[0])
+  const ys = poly.map((c) => c[1])
+  return (
+    p[0] >= Math.min(...xs) &&
+    p[0] <= Math.max(...xs) &&
+    p[1] >= Math.min(...ys) &&
+    p[1] <= Math.max(...ys)
+  )
+}
 function centroid(poly: [number, number][]): [number, number] {
   let x = 0
   let y = 0
