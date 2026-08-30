@@ -6,8 +6,7 @@ import type { ReactNode } from 'react'
 import maplibregl from 'maplibre-gl/dist/maplibre-gl-csp'
 import type { Map as MlMap } from 'maplibre-gl'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-csp-worker.js?url'
-import { AREA, MAP_STYLES } from '@/config'
-import { Button } from '@/components/ui/controls'
+import { AREA, MAP_STYLE } from '@/config'
 import { MapContext } from './context'
 
 maplibregl.setWorkerUrl(workerUrl)
@@ -20,23 +19,19 @@ interface MapCanvasProps {
 
 /**
  * Full-bleed MapLibre canvas. Children mount only once the style is ready and
- * reach the instance through `useMap()`. Falls through the MAP_STYLES list if a
- * provider is slow or blocked, then offers a manual retry.
+ * reach the instance through `useMap()`.
  */
 export function MapCanvas({ children }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [map, setMap] = useState<MlMap | null>(null)
   const [phase, setPhase] = useState<Phase>('loading')
-  const [styleIdx, setStyleIdx] = useState(0)
-  const [nonce, setNonce] = useState(0)
 
   useEffect(() => {
     if (!containerRef.current) return
-    setPhase('loading')
 
     const instance = new maplibregl.Map({
       container: containerRef.current,
-      style: MAP_STYLES[styleIdx],
+      style: MAP_STYLE,
       center: AREA.center,
       zoom: AREA.zoom,
       minZoom: AREA.minZoom,
@@ -64,14 +59,15 @@ export function MapCanvas({ children }: MapCanvasProps) {
     }
     const onError = (e: { error?: Error }) => {
       const msg = e.error?.message ?? String(e)
+      // benign: fired when a layer-scoped listener briefly outlives its layer
       if (msg.includes('cannot be queried for features')) return
       console.warn('[maplibre]', msg)
     }
+    // If the style has not loaded within a sensible window, surface it rather
+    // than leaving a black rectangle.
     const watchdog = window.setTimeout(() => {
-      if (instance.isStyleLoaded()) return
-      if (styleIdx < MAP_STYLES.length - 1) setStyleIdx((i) => i + 1)
-      else setPhase('error')
-    }, 16_000)
+      if (!instance.isStyleLoaded()) setPhase('error')
+    }, 25_000)
 
     instance.on('load', onLoad)
     instance.on('error', onError)
@@ -87,19 +83,13 @@ export function MapCanvas({ children }: MapCanvasProps) {
       instance.remove()
       setMap(null)
     }
-  }, [styleIdx, nonce])
-
-  const retry = () => {
-    setMap(null)
-    setStyleIdx(0)
-    setPhase('loading')
-    setNonce((n) => n + 1)
-  }
+  }, [])
 
   return (
     <div className="absolute inset-0">
       <div ref={containerRef} className="h-full w-full" />
 
+      {/* Depth vignette — decoration only, never intercepts the map. */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -117,17 +107,12 @@ export function MapCanvas({ children }: MapCanvasProps) {
 
       {phase === 'error' && (
         <div className="absolute inset-0 grid place-items-center bg-bg/60">
-          <div className="panel flex max-w-sm flex-col items-center gap-3 p-5 text-center">
-            <div>
-              <p className="text-sm text-ink">Base map didn’t load.</p>
-              <p className="mt-1.5 text-xs text-ink-dim">
-                The tile server is unreachable on this network. Routes and data
-                still work.
-              </p>
-            </div>
-            <Button variant="ghost" onClick={retry}>
-              Retry
-            </Button>
+          <div className="panel max-w-sm p-5 text-center">
+            <p className="text-sm text-ink">Base map didn’t load.</p>
+            <p className="mt-1.5 text-xs text-ink-dim">
+              The tile server may be unreachable on this network. Routes and data
+              still work — reload to retry the map.
+            </p>
           </div>
         </div>
       )}

@@ -24,14 +24,9 @@ export const AREA = {
   maxZoom: 17,
 }
 
-/**
- * Keyless dark base maps, tried in order. Carto Dark Matter first (cleanest),
- * OpenFreeMap dark as a fallback if Carto is slow or blocked on the network.
- */
-export const MAP_STYLES = [
-  'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-  'https://tiles.openfreemap.org/styles/dark',
-]
+/** Keyless dark base map. Carto Dark Matter — OSM data, no API key, no billing. */
+export const MAP_STYLE =
+  'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'
 
 /** Mock mode is the default. Set VITE_USE_MOCK=false to hit the real backend. */
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
