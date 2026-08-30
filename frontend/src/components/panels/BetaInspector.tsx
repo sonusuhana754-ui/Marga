@@ -57,10 +57,14 @@ export function BetaInspector({ series, current, overlayOn, onToggleOverlay }: B
         <button
           type="button"
           onClick={onToggleOverlay}
-          className="flex items-center gap-1 text-[10.5px] font-medium text-ink-mute transition-colors hover:text-ink"
+          className={`flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+            overlayOn
+              ? 'border-marga/50 text-marga'
+              : 'border-line text-ink-mute hover:text-ink-dim'
+          }`}
         >
           {overlayOn ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-          heat map
+          zone heat map
         </button>
       </div>
 
