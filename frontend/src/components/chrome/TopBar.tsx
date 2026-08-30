@@ -24,12 +24,8 @@ const VIEW_OPTIONS: { value: View; label: string }[] = [
   { value: 'benchmark', label: 'Benchmark' },
 ]
 
-interface TopBarProps {
-  onStartDemo?: () => void
-}
-
-export function TopBar({ onStartDemo }: TopBarProps) {
-  const { view, setView } = useDemo()
+export function TopBar() {
+  const { view, setView, guided, setGuided } = useDemo()
 
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between p-4">
@@ -62,8 +58,10 @@ export function TopBar({ onStartDemo }: TopBarProps) {
 
       <button
         type="button"
-        onClick={onStartDemo}
-        className="panel pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-medium text-ink transition-colors hover:text-marga focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marga"
+        onClick={() => setGuided(!guided)}
+        className={`panel pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marga ${
+          guided ? 'text-marga' : 'text-ink hover:text-marga'
+        }`}
       >
         <Play className="h-3.5 w-3.5" fill="currentColor" />
         Guided demo

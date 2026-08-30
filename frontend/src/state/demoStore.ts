@@ -7,6 +7,7 @@ export type View = 'live' | 'benchmark'
 
 export interface DemoValue {
   view: View
+  guided: boolean
   mode: Mode
   solver: SolverId
   status: Status
@@ -20,6 +21,7 @@ export interface DemoValue {
   selectedVehicle: number | null
 
   setView: (v: View) => void
+  setGuided: (g: boolean) => void
   setMode: (m: Mode) => void
   setSolver: (s: SolverId) => void
   optimize: () => Promise<void>

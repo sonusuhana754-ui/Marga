@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { OptimizeResponse, SolverId, StreamTick } from '@/types/api'
 import { runOptimize } from '@/api/optimize'
@@ -13,6 +13,7 @@ const runDuration = (r: OptimizeResponse) =>
 
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<View>('live')
+  const [guided, setGuided] = useState(false)
   const [mode, setModeRaw] = useState<Mode>('fleet')
   const [solver, setSolver] = useState<SolverId>('va_qpso')
   const [status, setStatus] = useState<DemoValue['status']>('idle')
@@ -58,6 +59,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const value = useMemo<DemoValue>(
     () => ({
       view,
+      guided,
       mode,
       solver,
       status,
@@ -67,14 +69,21 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       single: mockSingleRoute,
       selectedVehicle,
       setView,
+      setGuided,
       setMode,
       setSolver,
       optimize,
       selectVehicle,
       reset,
     }),
-    [view, mode, solver, status, runs, stream, selectedVehicle, setMode, optimize, selectVehicle, reset],
+    [view, guided, mode, solver, status, runs, stream, selectedVehicle, setMode, optimize, selectVehicle, reset],
   )
+
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      ;(window as unknown as { __demo?: DemoValue }).__demo = value
+    }
+  }, [value])
 
   return <DemoCtx.Provider value={value}>{children}</DemoCtx.Provider>
 }

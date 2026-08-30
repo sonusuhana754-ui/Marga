@@ -18,6 +18,7 @@ import { WhyRoute } from '@/components/panels/WhyRoute'
 import { BetaInspector } from '@/components/panels/BetaInspector'
 import { ImpactStrip } from '@/components/panels/ImpactStrip'
 import { BenchmarkView } from '@/components/benchmark/BenchmarkView'
+import { DemoRunner } from '@/components/demo/DemoRunner'
 import { useDemo } from '@/state/demoStore'
 import { useSimClock } from '@/state/simClock'
 import { useStreamTick } from '@/state/useStreamTick'
@@ -27,6 +28,7 @@ import { DEPOT, STOPS, mockImpactSample } from '@/mocks'
 export function Dashboard() {
   const {
     view,
+    guided,
     mode,
     status,
     solver,
@@ -87,6 +89,8 @@ export function Dashboard() {
 
       <TopBar />
 
+      {guided && <DemoRunner />}
+
       {view === 'live' && (
         <div className="pointer-events-none absolute inset-0 z-10">
           <div className="pointer-events-auto absolute left-4 top-20 flex w-[272px] flex-col gap-3">
@@ -118,7 +122,7 @@ export function Dashboard() {
             </div>
           )}
 
-          {fleetReady && (
+          {fleetReady && !guided && (
             <div className="pointer-events-auto absolute left-1/2 top-4 -translate-x-1/2">
               <StatusIndicator />
             </div>
