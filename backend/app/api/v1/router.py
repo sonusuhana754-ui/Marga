@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import graph, health
+from app.api.v1.endpoints import graph, health, route
 
 api_router = APIRouter()
 
@@ -11,4 +11,8 @@ api_router.include_router(
 api_router.include_router(
     graph.router,
     tags=["Graph"],
+)
+api_router.include_router(
+    route.router,
+    tags=["Route"],
 )
