@@ -21,7 +21,7 @@ class TestOptimizeSuccess:
     def test_returns_successful_response(self, client: TestClient):
         resp = client.post(
             _url(),
-            json={"scenario_id": "grid_cvrp_8", "solver": "ortools"},
+            json={"mode": "named", "scenario_id": "grid_cvrp_8", "solver": "ortools"},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -45,7 +45,7 @@ class TestOptimizeSuccess:
     def test_response_has_no_placeholder_fields(self, client: TestClient):
         resp = client.post(
             _url(),
-            json={"scenario_id": "grid_cvrp_6", "solver": "ortools"},
+            json={"mode": "named", "scenario_id": "grid_cvrp_6", "solver": "ortools"},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -56,7 +56,7 @@ class TestOptimizeSuccess:
     def test_vrptw_scenario_supported(self, client: TestClient):
         resp = client.post(
             _url(),
-            json={"scenario_id": "grid_vrptw_8", "solver": "ortools"},
+            json={"mode": "named", "scenario_id": "grid_vrptw_8", "solver": "ortools"},
         )
         assert resp.status_code == 200
         assert resp.json()["scenario_id"] == "grid_vrptw_8"
@@ -66,7 +66,7 @@ class TestOptimizeDeterminism:
     """Same scenario + seed must be reproducible."""
 
     def test_same_input_same_cost(self, client: TestClient):
-        payload = {"scenario_id": "grid_cvrp_8", "solver": "ortools", "seed": 42}
+        payload = {"mode": "named", "scenario_id": "grid_cvrp_8", "solver": "ortools", "seed": 42}
         r1 = client.post(_url(), json=payload).json()
         r2 = client.post(_url(), json=payload).json()
         assert r1["total_cost"] == r2["total_cost"]
@@ -78,14 +78,14 @@ class TestOptimizeValidation:
     def test_unsupported_solver_returns_422(self, client: TestClient):
         resp = client.post(
             _url(),
-            json={"scenario_id": "grid_cvrp_8", "solver": "qpso"},
+            json={"mode": "named", "scenario_id": "grid_cvrp_8", "solver": "qpso"},
         )
         assert resp.status_code == 422
 
     def test_unknown_scenario_returns_422(self, client: TestClient):
         resp = client.post(
             _url(),
-            json={"scenario_id": "does_not_exist", "solver": "ortools"},
+            json={"mode": "named", "scenario_id": "does_not_exist", "solver": "ortools"},
         )
         assert resp.status_code == 422
         assert "does_not_exist" in resp.json()["detail"]
@@ -97,24 +97,283 @@ class TestOptimizeValidation:
     def test_negative_seed_returns_422(self, client: TestClient):
         resp = client.post(
             _url(),
-            json={"scenario_id": "grid_cvrp_8", "solver": "ortools", "seed": -1},
+            json={"mode": "named", "scenario_id": "grid_cvrp_8", "solver": "ortools", "seed": -1},
         )
         assert resp.status_code == 422
 
 
-class TestScenarioRegistry:
-    """The solver-library registry exposes known named scenarios."""
+class TestCustomOptimizeSuccess:
+    """Successful solve over a custom static scenario."""
 
-    def test_available_ids(self):
-        available = scenario_registry.available_ids()
-        assert "grid_cvrp_8" in available
-        assert "grid_cvrp_6" in available
-        assert "grid_vrptw_8" in available
+    def test_custom_cvrp_simple(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "seed": 123,
+            "depot": {"id": 0, "lng": -74.006, "lat": 40.7128, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": -74.001, "lat": 40.7138, "demand": 2},
+                {"id": 2, "lng": -74.011, "lat": 40.7118, "demand": 3},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 5},
+                {"id": 1, "capacity": 5},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["solver"] == "ortools"
+        assert body["scenario_id"] == "custom"
+        assert body["total_cost"] > 0
+        assert body["runtime_ms"] >= 0
+        assert body["vehicles_used"] >= 1
+        assert len(body["routes"]) >= 1
+        for route in body["routes"]:
+            assert route["vehicle_id"] >= 0
+            assert route["stop_sequence"][0] == 0
+            assert route["stop_sequence"][-1] == 0
+            assert route["load"] >= 0
+            assert route["distance_m"] >= 0
+            assert route["time_s"] >= 0
 
-    def test_get_unknown_raises(self):
-        import pytest
+    def test_custom_cvrp_uniform_capacities_all_stops_covered(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": 0.001, "lat": 0.0, "demand": 1},
+                {"id": 2, "lng": 0.0, "lat": 0.001, "demand": 2},
+                {"id": 3, "lng": -0.001, "lat": 0.0, "demand": 1},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 10},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["vehicles_used"] >= 1
 
-        from app.algorithms.scenarios import scenario_registry
+    def test_custom_vrptw_valid(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "seed": 42,
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": 0.002, "lat": 0.0, "demand": 1},
+                {"id": 2, "lng": 0.0, "lat": 0.002, "demand": 1},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 5},
+            ],
+            "time_windows": [
+                {"stop_id": 0, "earliest": 0.0, "latest": 1000.0},
+                {"stop_id": 1, "earliest": 0.0, "latest": 1000.0},
+                {"stop_id": 2, "earliest": 0.0, "latest": 1000.0},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["scenario_id"] == "custom"
 
-        with pytest.raises(KeyError):
-            scenario_registry.get("nope")
+    def test_custom_determinism(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "seed": 7,
+            "depot": {"id": 0, "lng": 1.0, "lat": 2.0, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": 1.001, "lat": 2.0, "demand": 3},
+                {"id": 2, "lng": 1.0, "lat": 2.001, "demand": 2},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 10},
+            ],
+        }
+        r1 = client.post(_url(), json=payload).json()
+        r2 = client.post(_url(), json=payload).json()
+        assert r1["total_cost"] == r2["total_cost"]
+
+
+class TestCustomOptimizeValidation:
+    """Validation for custom scenarios."""
+
+    def test_negative_capacity_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": 0.001, "lat": 0.0, "demand": 1},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": -5},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_zero_capacity_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": 0.001, "lat": 0.0, "demand": 1},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 0},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_depot_demand_nonzero_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 5},
+            "stops": [
+                {"id": 1, "lng": 0.001, "lat": 0.0, "demand": 1},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 10},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_total_capacity_less_than_demand_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": 0.001, "lat": 0.0, "demand": 5},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 3},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_invalid_time_window_earliest_greater_than_latest_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": 0.001, "lat": 0.0, "demand": 1},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 5},
+            ],
+            "time_windows": [
+                {"stop_id": 1, "earliest": 100.0, "latest": 50.0},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_time_window_references_unknown_stop_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": 0.001, "lat": 0.0, "demand": 1},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 5},
+            ],
+            "time_windows": [
+                {"stop_id": 99, "earliest": 0.0, "latest": 100.0},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_duplicate_stop_ids_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [
+                {"id": 0, "lng": 0.001, "lat": 0.0, "demand": 1},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 5},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_duplicate_vehicle_ids_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [
+                {"id": 1, "lng": 0.001, "lat": 0.0, "demand": 1},
+            ],
+            "vehicles": [
+                {"id": 0, "capacity": 5},
+                {"id": 0, "capacity": 5},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_invalid_latitude_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 91.0, "demand": 0},
+            "stops": [],
+            "vehicles": [{"id": 0, "capacity": 5}],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_invalid_longitude_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 181.0, "lat": 0.0, "demand": 0},
+            "stops": [],
+            "vehicles": [{"id": 0, "capacity": 5}],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_negative_time_window_values_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [{"id": 1, "lng": 0.001, "lat": 0.0, "demand": 1}],
+            "vehicles": [{"id": 0, "capacity": 5}],
+            "time_windows": [{"stop_id": 1, "earliest": -1.0, "latest": 10.0}],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422
+
+    def test_duplicate_time_window_rejected(self, client: TestClient):
+        payload = {
+            "mode": "custom",
+            "solver": "ortools",
+            "depot": {"id": 0, "lng": 0.0, "lat": 0.0, "demand": 0},
+            "stops": [{"id": 1, "lng": 0.001, "lat": 0.0, "demand": 1}],
+            "vehicles": [{"id": 0, "capacity": 5}],
+            "time_windows": [
+                {"stop_id": 1, "earliest": 0.0, "latest": 10.0},
+                {"stop_id": 1, "earliest": 0.0, "latest": 20.0},
+            ],
+        }
+        resp = client.post(_url(), json=payload)
+        assert resp.status_code == 422

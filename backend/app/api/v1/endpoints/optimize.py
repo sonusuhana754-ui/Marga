@@ -1,8 +1,9 @@
-"""Versioned optimize endpoint: run a solver over a named in-code scenario."""
+"""Versioned optimize endpoint: run a solver over named or custom scenarios."""
 
 from concurrent.futures import ThreadPoolExecutor
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Body
 
 from app.core.logging import get_logger
 from app.schemas.optimize import OptimizeRequest, OptimizeResponse
@@ -19,9 +20,14 @@ _executor = ThreadPoolExecutor(max_workers=2)
     "/optimize",
     response_model=OptimizeResponse,
     status_code=status.HTTP_200_OK,
-    summary="Optimize a named scenario",
-    description="Run a solver (currently 'ortools') over one of the deterministic "
-    "in-code scenarios by scenario_id with an optional seed.",
+    summary="Optimize a scenario (named or custom)",
+    description=(
+        "Run a solver (currently 'ortools') over either a deterministic in-code scenario "
+        "(mode='named') or a custom static scenario (mode='custom'). "
+        "Custom scenarios use a synthetic, straight-line travel-time approximation "
+        "(complete in-memory graph with haversine distances and the existing default speed) "
+        "— not real road-network routing."
+    ),
 )
 def optimize(body: OptimizeRequest) -> OptimizeResponse:
     try:
@@ -38,7 +44,11 @@ def optimize(body: OptimizeRequest) -> OptimizeResponse:
             detail="Solver did not finish within the time limit.",
         )
     except Exception:
-        logger.exception("Unexpected error optimizing scenario_id=%s", body.scenario_id)
+        try:
+            scenario_id = getattr(body, "scenario_id", None)
+        except Exception:
+            scenario_id = None
+        logger.exception("Unexpected error optimizing scenario_id=%s", scenario_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred while optimizing the scenario.",
