@@ -124,3 +124,14 @@ class ScenarioRegistry:
 
 #: Module-level singleton registry.
 scenario_registry = ScenarioRegistry()
+
+
+def describe(scenario_id: str) -> dict:
+    if scenario_id not in _DEFS:
+        raise KeyError(f"Unknown scenario_id '{scenario_id}'")
+    definition = _DEFS[scenario_id]
+    return {
+        "id": scenario_id,
+        "description": definition.get("description", ""),
+        "seed": definition.get("seed"),
+    }
