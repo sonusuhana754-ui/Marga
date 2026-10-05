@@ -90,3 +90,56 @@ def evaluate_solution(scenario: Scenario, solution: Solution) -> Solution:
     solution.total_time_s = total_time
     solution.total_cost = total_cost
     return solution
+
+
+def validate_solution(scenario: Scenario, solution) -> Tuple[bool, List[str]]:
+    violations: List[str] = []
+    if not getattr(solution, "feasible", False):
+        violations.append("solution.feasible is False")
+        return False, violations
+
+    stops = scenario.stops
+    num_stops = scenario.num_stops
+
+    seen = set()
+    for route in solution.routes:
+        seq = getattr(route, "stop_sequence", [])
+        if len(seq) < 2:
+            violations.append(f"route {route.vehicle_id} has invalid stop_sequence")
+            continue
+        if seq[0] != DEPOT_INDEX or seq[-1] != DEPOT_INDEX:
+            violations.append(f"route {route.vehicle_id} must start/end at depot {DEPOT_INDEX}")
+        for i, s in enumerate(seq[1:-1], start=1):
+            if s == DEPOT_INDEX:
+                violations.append(f"route {route.vehicle_id} contains depot in interior at pos {i}")
+        for s in seq:
+            if s < 0 or s >= num_stops:
+                violations.append(f"stop id {s} out of range")
+            seen.add(s)
+
+    all_stops = set(range(num_stops)) if num_stops >= 0 else set()
+    for sid in all_stops:
+        if sid not in seen:
+            violations.append(f"missing stop {sid}")
+    for sid in seen:
+        if sid in all_stops and sid != DEPOT_INDEX:
+            count = sum(1 for r in solution.routes for s in getattr(r, "stop_sequence", []) if s == sid)
+            if count != 1:
+                violations.append(f"duplicate stop {sid}")
+
+    for route in solution.routes:
+        seq = getattr(route, "stop_sequence", [])
+        load_recomputed = sum(stops[i].demand for i in seq if i != DEPOT_INDEX)
+        if abs(getattr(route, "load", -1) - load_recomputed) > 1e-9:
+            violations.append(f"route {route.vehicle_id} load mismatch")
+        if hasattr(scenario, "vehicles") and route.vehicle_id < len(scenario.vehicles):
+            cap = scenario.vehicles[route.vehicle_id].capacity
+            if getattr(route, "load", 0) > cap + 1e-9:
+                violations.append(f"route {route.vehicle_id} capacity exceeded")
+
+    if getattr(solution, "total_distance_m", 0.0) < 0:
+        violations.append("total_distance_m < 0")
+    if getattr(solution, "total_time_s", 0.0) < 0:
+        violations.append("total_time_s < 0")
+
+    return len(violations) == 0, violations

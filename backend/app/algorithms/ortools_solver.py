@@ -11,7 +11,7 @@ future metahurestic solvers, not to claim optimality.
 from __future__ import annotations
 
 import time
-from typing import List
+from typing import List, Optional
 
 from ortools.constraint_solver import pywrapcp, routing_enums_pb2
 
@@ -21,7 +21,6 @@ from app.algorithms.models import DEPOT_INDEX, RoutePlan, Scenario, Solution
 
 
 def _build_routing_model(scenario: Scenario):
-    """Build and return ``(manager, routing)`` for OR-Tools."""
     time_matrix, _dist_matrix = edge_cost_matrice(scenario)
 
     num_nodes = scenario.num_stops
@@ -36,7 +35,6 @@ def _build_routing_model(scenario: Scenario):
     transit_callback_index = routing.RegisterTransitCallback(time_callback)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
-    # Capacity dimension.
     demands = [0] * num_nodes
     for stop in scenario.stops:
         demands[stop.id] = stop.demand
@@ -48,23 +46,20 @@ def _build_routing_model(scenario: Scenario):
     demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
     routing.AddDimensionWithVehicleCapacity(
         demand_callback_index,
-        0,  # no slack
+        0,
         [v.capacity for v in scenario.vehicles],
-        True,  # start cumul to zero
+        True,
         "Capacity",
     )
 
-    # Time-window dimension (VRPTW only).
     if scenario.time_windowed:
         time_windows = scenario.time_windows or {}
-        horizon = max(
-            (tw[1] for tw in time_windows.values()), default=1_000_000.0
-        )
+        horizon = max((tw[1] for tw in time_windows.values()), default=1_000_000.0)
         horizon = max(horizon, 1_000_000.0)
-        time_dim = routing.AddDimension(
+        routing.AddDimension(
             transit_callback_index,
-            int(horizon),  # slack capacity
-            int(horizon),  # max total time per vehicle
+            int(horizon),
+            int(horizon),
             True,
             "Time",
         )
@@ -84,31 +79,37 @@ def _build_routing_model(scenario: Scenario):
 
 
 class ORToolsSolver(Solver):
-    """Static CVRP/VRPTW baseline via Google OR-Tools."""
-
     solver_id = "ortools"
 
     def __init__(
         self,
         scenario: Scenario,
         time_limit_ms: int = 10_000,
+        solution_limit: Optional[int] = None,
     ) -> None:
         super().__init__(scenario)
         self.time_limit_ms = time_limit_ms
+        if solution_limit is not None and solution_limit < 1:
+            raise ValueError("solution_limit must be >= 1")
+        self.solution_limit = solution_limit
 
     def solve(self) -> Solution:
         scenario = self.scenario
         manager, routing = _build_routing_model(scenario)
 
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-        search_parameters.time_limit.seconds = max(1, self.time_limit_ms // 1000)
+        if self.time_limit_ms > 0:
+            search_parameters.time_limit.FromMilliseconds(int(self.time_limit_ms))
+        else:
+            search_parameters.time_limit.FromMilliseconds(10_000)
         search_parameters.first_solution_strategy = (
             routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
         )
-        # 2-opt guided local search only (3-opt intentionally deferred).
         search_parameters.local_search_metaheuristic = (
             routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
         )
+        if self.solution_limit is not None:
+            search_parameters.solution_limit = int(self.solution_limit)
 
         start = time.perf_counter()
         assignment = routing.SolveWithParameters(search_parameters)
@@ -127,7 +128,6 @@ class ORToolsSolver(Solver):
                 index = assignment.Value(routing.NextVar(index))
             end_node = manager.IndexToNode(index)
             seq.append(end_node)
-            # Drop single-node (depot-only) vehicles.
             if len(seq) > 2:
                 solution.routes.append(
                     RoutePlan(vehicle_id=vehicle, stop_sequence=seq, load=0)
@@ -141,10 +141,8 @@ class ORToolsSolver(Solver):
 
 
 def solve_cvrp(scenario: Scenario, **kwargs) -> Solution:
-    """Convenience: solve a capacity-only scenario."""
     return ORToolsSolver(scenario, **kwargs).solve()
 
 
 def solve_vrptw(scenario: Scenario, **kwargs) -> Solution:
-    """Convenience: solve a time-windowed scenario (static full reopt)."""
     return ORToolsSolver(scenario, **kwargs).solve()
