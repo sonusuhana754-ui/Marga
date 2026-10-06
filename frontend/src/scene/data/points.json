@@ -1,0 +1,57 @@
+{
+  "_comment": "Hand-authored anchor coordinates for the demo scene: the depot and the delivery stops. Scene data only \u2014 no route, cost or timing in the project comes from here.",
+  "depot": [
+    77.623,
+    12.9455
+  ],
+  "destination": [
+    77.6395,
+    12.9235
+  ],
+  "truck_via": [
+    77.6222,
+    12.93
+  ],
+  "stops": [
+    [
+      77.625,
+      12.942
+    ],
+    [
+      77.6282,
+      12.9376
+    ],
+    [
+      77.6301,
+      12.9339
+    ],
+    [
+      77.6327,
+      12.9299
+    ],
+    [
+      77.6352,
+      12.9264
+    ],
+    [
+      77.6238,
+      12.9322
+    ],
+    [
+      77.6322,
+      12.9236
+    ],
+    [
+      77.636,
+      12.931
+    ],
+    [
+      77.6274,
+      12.9268
+    ],
+    [
+      77.6345,
+      12.9345
+    ]
+  ]
+}

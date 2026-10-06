@@ -1,0 +1,116 @@
+@import 'tailwindcss';
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+/* ---------------------------------------------------------------------------
+   MARGA design tokens. Dark-first control-room palette: near-black with a
+   faint blue-green bias, one teal accent ("the way found"), muted signal hues.
+--------------------------------------------------------------------------- */
+@theme {
+  --color-bg: #090e10;
+  --color-bg-elev: #0f171a;
+  --color-surface: #141e21;
+  --color-surface-2: #1a262a;
+  --color-line: #27353a;
+  --color-line-soft: #1c2a2e;
+
+  --color-ink: #eaf0f1;
+  --color-ink-dim: #9aadb0;
+  --color-ink-mute: #617376;
+
+  --color-marga: #2fd9c4;
+  --color-marga-deep: #0f5c55;
+  --color-marga-wash: #123733;
+
+  --color-amber: #e9b23c;
+  --color-red: #ee6b4d;
+  --color-green: #58c98b;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --radius-panel: 12px;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-line);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv11', 'ss01';
+    overflow: hidden;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-marga) 32%, transparent);
+    color: #fff;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 999px;
+    border: 2px solid var(--color-bg);
+  }
+}
+
+@layer components {
+  /* Glass panel that floats over the map without stealing focus from it. */
+  .panel {
+    background: color-mix(in oklab, var(--color-surface) 82%, transparent);
+    backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-panel);
+    box-shadow:
+      0 1px 0 0 color-mix(in oklab, #fff 4%, transparent) inset,
+      0 20px 40px -24px rgb(0 0 0 / 0.7);
+  }
+
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-ink-mute);
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* MapLibre: strip default chrome, we render our own. */
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-logo,
+.maplibregl-ctrl-bottom-right,
+.maplibregl-ctrl-bottom-left {
+  display: none !important;
+}
+.maplibregl-canvas {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
