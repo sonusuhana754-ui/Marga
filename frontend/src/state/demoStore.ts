@@ -1,5 +1,13 @@
 import { createContext, useContext } from 'react'
-import type { BetaPoint, OptimizeResponse, RouteResponse, SolverId } from '@/types/api'
+import type {
+  BetaPoint,
+  LoadedArea,
+  LngLat,
+  OptimizeResponse,
+  RouteResponse,
+  SolverId,
+  TrafficState,
+} from '@/types/api'
 
 export type Mode = 'single' | 'fleet'
 export type Status = 'idle' | 'optimizing' | 'ready' | 'error'
@@ -23,9 +31,23 @@ export interface DemoValue {
    * hidden instead of showing a curve for a solver that produced none.
    */
   betaSeries: BetaPoint[] | null
+
+  /** The OSM area the solvers route on. Null until one has been downloaded. */
+  area: LoadedArea | null
+  areaLoading: boolean
+  /** Backend's reason when an area download failed. */
+  areaError: string | null
+  /** True while a click on the map will choose the next area. */
+  picking: boolean
+
+  /** Live speeds over `area`. Null until the first read completes. */
+  traffic: TrafficState | null
+  trafficLoading: boolean
+  trafficError: string | null
+
   /**
    * Single-vehicle route. Null until `POST /route` answers, and it stays null
-   * with `singleError` set when the backend has no loaded graph.
+   * with `singleError` set when no area has been loaded yet.
    */
   single: RouteResponse | null
   singleError: string | null
@@ -36,8 +58,17 @@ export interface DemoValue {
   setMode: (m: Mode) => void
   setSolver: (s: SolverId) => void
   optimize: () => Promise<void>
-  /** Load the OSM graph server-side, then retry the single-vehicle route. */
+  /** Download the OSM graph server-side, then retry the single-vehicle route. */
   retrySingle: () => Promise<void>
+
+  /** Load the drivable network around a [lng, lat] point. */
+  loadAreaByPoint: (center: LngLat) => Promise<void>
+  /** Load the drivable network for a named place. */
+  loadAreaByName: (place: string) => Promise<void>
+  setPicking: (picking: boolean) => void
+  /** Re-probe live traffic for the loaded area. */
+  refreshTraffic: () => Promise<void>
+
   selectVehicle: (id: number | null) => void
   reset: () => void
 }

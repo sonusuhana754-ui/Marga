@@ -7,22 +7,22 @@
 
    Everything the backend genuinely reports is carried through untouched:
    `total_cost`, `runtime_ms`, `vehicles_used`, and per-route `stop_sequence`,
-   `load`, `distance_m`, `time_s`.
+   `load`, `distance_m`, `time_s`, plus — for `mode:'graph'` runs — the
+   backend's own depot/stop coordinates and road-following `geometry`.
 
    Two things are *derived*, and both are exact rather than invented:
 
-     path        The custom-scenario builder in `optimize_service.py` lays a
-                 complete directed graph over the points we send, with
-                 haversine length per edge. A shortest path between two of our
-                 points is therefore the straight line between them, so
-                 `stop_sequence` plus the coordinates we sent reproduces the
-                 backend's own geometry exactly.
+     path        For a graph run the backend's road geometry is used verbatim,
+                 so routes follow real streets. Otherwise the custom-scenario
+                 builder in `optimize_service.py` lays a complete directed
+                 graph over the points we send, with haversine length per edge:
+                 a shortest path between two of our points is the straight line
+                 between them, so `stop_sequence` plus the reported points
+                 reproduces the backend's own geometry exactly.
 
-     timestamps  Same edges, with `travel_time = length / 50 km/h`
-                 (`_DEFAULT_SPEED_MS` in `evaluate.py`). Cumulative leg times
-                 are rescaled so the last vertex lands exactly on the
-                 `time_s` the backend reported, so the marker animation cannot
-                 drift from the measured figure.
+     timestamps  Cumulative travel time along that path, rescaled so the last
+                 vertex lands exactly on the `time_s` the backend reported, so
+                 the marker animation cannot drift from the measured figure.
 
    One thing is *not* available, and is reported as such rather than faked:
    no solver exposes a per-route cost-term breakdown or a runner-up alternative,
@@ -37,16 +37,23 @@
 import type {
   DecisionWeights,
   FleetRoute,
+  LoadedArea,
   LngLat,
   OptimizeRequest,
   OptimizeResponse,
   SolverDiagnostics,
+  TrafficSnapshot,
 } from '@/types/api'
 import type {
   BackendCustomOptimizeRequest,
+  BackendGraphOptimizeRequest,
   BackendOptimizeResponse,
+  BackendTrafficSnapshot,
 } from './backendTypes'
 import { DEPOT, STOPS } from '@/scene/scenario'
+
+/** Either wire shape; `mode` tells them apart. */
+export type BackendOptimizeRequest = BackendCustomOptimizeRequest | BackendGraphOptimizeRequest
 
 /**
  * The backend's fixed default speed, `_DEFAULT_SPEED_MS` in
@@ -58,6 +65,28 @@ const BACKEND_SPEED_MPS = (50.0 * 1000.0) / 3600.0
 /** Depot is position 0; stop at position p>0 is STOPS[p-1]. Mirrors backend indexing. */
 function pointAtPosition(position: number): LngLat {
   return position === 0 ? DEPOT : STOPS[position - 1] ?? DEPOT
+}
+
+/**
+ * Position → coordinate resolver for one response.
+ *
+ * The backend now reports every depot/stop it actually solved on, so those
+ * values win: the map is drawn from what the solver saw, not from the scene
+ * pins. The pins remain only as the fallback for a response that carries no
+ * points, which today means nothing at all.
+ */
+function resolverFor(res: BackendOptimizeResponse): (position: number) => LngLat {
+  const points = res.points ?? []
+  if (points.length === 0) return pointAtPosition
+  const byId = new Map(points.map((p) => [p.id, p] as const))
+  return (position) => {
+    const point = byId.get(position) ?? points[position]
+    if (!point) {
+      console.warn(`[adapter] no backend point for position ${position}`)
+      return pointAtPosition(position)
+    }
+    return [point.lng, point.lat]
+  }
 }
 
 /** Deterministic 32-bit LCG so a given seed always yields the same demands. */
@@ -82,19 +111,48 @@ function buildDemands(n: number, capacity: number, seed: number): number[] {
 }
 
 /**
- * Frontend optimize request -> backend `mode:'custom'` body.
+ * Frontend optimize request → backend body.
  *
- * Only `stops` of the 10 hand-authored Koramangala points are sent; the rest are
- * held back for larger fleets. `vehicle_profile` and `city` have no counterpart
- * in `CustomScenarioRequest` — the backend models capacity only, and physical
- * restrictions are still a placeholder there — so they are dropped rather than
- * smuggled into a field that does not exist.
+ * Two shapes, chosen honestly:
+ *
+ *   `mode:'graph'`  when an OSM area is loaded — the backend generates the
+ *                   depot and stops from real junctions and returns real road
+ *                   geometry. This is the normal path.
+ *
+ *   `mode:'custom'` when no graph is loaded — the hand-authored scene points
+ *                   are sent and the backend solves a complete graph over them
+ *                   with haversine distances (straight lines, no roads). The
+ *                   caption has to say so; nothing here pretends otherwise.
+ *
+ * `vehicle_profile` and `city` have no counterpart in either backend request —
+ * the backend models capacity only, and physical restrictions are still a
+ * placeholder there — so they are dropped rather than smuggled into a field
+ * that does not exist.
  */
 export function toBackendOptimize(
   req: OptimizeRequest,
-): BackendCustomOptimizeRequest {
+  area?: LoadedArea | null,
+): BackendOptimizeRequest {
+  const vehicles = Math.max(1, req.vehicles)
+
+  if (area) {
+    const capacity = Math.max(1, Math.floor(req.capacity / vehicles))
+    return {
+      mode: 'graph',
+      solver: req.solver,
+      seed: req.seed,
+      graph_key: area.graph_key,
+      stops: Math.max(4, Math.min(req.stops, 80)),
+      vehicles,
+      capacity,
+      // Probing live traffic is what puts observations in the volatility
+      // window; the backend reports `traffic: null` if no feed answers.
+      traffic: true,
+    }
+  }
+
   const n = Math.max(1, Math.min(req.stops, STOPS.length))
-  const capacity = Math.max(1, Math.floor(req.capacity / Math.max(1, req.vehicles)))
+  const capacity = Math.max(1, Math.floor(req.capacity / vehicles))
   const demands = buildDemands(n, capacity, req.seed)
 
   return {
@@ -108,7 +166,7 @@ export function toBackendOptimize(
       lat,
       demand: demands[i],
     })),
-    vehicles: Array.from({ length: Math.max(1, req.vehicles) }, (_, i) => ({
+    vehicles: Array.from({ length: vehicles }, (_, i) => ({
       id: i,
       capacity,
     })),
@@ -122,8 +180,15 @@ export function fromBackendOptimize(
   solver: OptimizeRequest['solver'],
   runId: string,
 ): OptimizeResponse {
+  const resolvePoint = resolverFor(res)
+
   const routes: FleetRoute[] = res.routes.map((r) => {
-    const path = r.stop_sequence.map(pointAtPosition)
+    // Graph runs draw and animate along the road polyline the backend
+    // computed; anything else has only the stop sequence to work with.
+    const hasGeometry = (r.geometry?.length ?? 0) >= 2
+    const path: LngLat[] = hasGeometry
+      ? r.geometry.map(([lng, lat]) => [lng, lat] as LngLat)
+      : r.stop_sequence.map(resolvePoint)
 
     // Cumulative leg time from the same edges the backend built, rescaled so the
     // final vertex equals the time_s it actually reported.
@@ -197,6 +262,55 @@ export function fromBackendOptimize(
     },
     source: 'backend',
     diagnostics: readDiagnostics(res.solver_diagnostics),
+    points: (res.points ?? []).map((p) => ({
+      id: p.id,
+      lng: p.lng,
+      lat: p.lat,
+      demand: p.demand,
+      is_depot: p.is_depot,
+    })),
+    area: res.graph
+      ? {
+          graph_key: res.graph.graph_key,
+          place: res.graph.place,
+          label: res.graph.place.replace(/^point /, 'near '),
+          center: res.graph.center,
+          bounds: res.graph.bounds,
+          nodes: res.graph.nodes,
+          edges: res.graph.edges,
+          total_length_km: res.graph.total_length_km,
+        }
+      : null,
+    // A null here is a real null: no feed configured, or none answered. The
+    // panels render that state instead of substituting plausible speeds.
+    traffic: res.traffic ? fromBackendTraffic(res.traffic) : null,
+  }
+}
+
+/** One wire reading batch → the contract's `TrafficSnapshot`. */
+export function fromBackendTraffic(raw: BackendTrafficSnapshot): TrafficSnapshot {
+  return {
+    source: raw.source,
+    observed_at: raw.observed_at,
+    probes: raw.probes,
+    failed: raw.failed,
+    mean_current_kmh: raw.mean_current_kmh,
+    mean_free_flow_kmh: raw.mean_free_flow_kmh,
+    readings: raw.readings.map((reading) => {
+      const fields = reading as Record<string, unknown>
+      const field = (key: string, fallback = 0) =>
+        typeof fields[key] === 'number' ? (fields[key] as number) : fallback
+      return {
+        ...(typeof fields.leg === 'string' ? { leg: fields.leg } : {}),
+        lng: field('lng'),
+        lat: field('lat'),
+        current_kmh: field('current_kmh'),
+        free_flow_kmh: field('free_flow_kmh'),
+        delay_ratio: field('delay_ratio', 1),
+        confidence: field('confidence'),
+        road_closure: fields.road_closure === true,
+      }
+    }),
   }
 }
 

@@ -30,6 +30,47 @@
 
 import type { SolverId } from '@/types/api'
 
+/* ---- POST /graphs/load --------------------------------------------------- */
+
+export interface BackendGraphMetadata {
+  graph_key: string
+  place: string
+  nodes: number
+  edges: number
+  total_length_km: number
+  avg_travel_time_s: number
+  default_speed_kmh: number
+  is_strongly_connected: boolean | null
+  scc_node_count: number | null
+  center: [number, number] | null
+  bounds: [number, number, number, number] | null
+}
+
+export interface BackendGraphLoadResponse {
+  message: string
+  graph_key: string
+  metadata: BackendGraphMetadata
+}
+
+/* ---- GET /traffic/snapshot ---------------------------------------------- */
+
+export interface BackendTrafficSnapshot {
+  source: string
+  observed_at: string
+  probes: number
+  failed: number
+  mean_current_kmh: number
+  mean_free_flow_kmh: number
+  readings: Record<string, number | string | boolean>[]
+}
+
+export interface BackendTrafficSnapshotResponse {
+  configured: boolean
+  graph_key: string
+  snapshot: BackendTrafficSnapshot | null
+  detail: string | null
+}
+
 /* ---- POST /optimize (mode='custom') -------------------------------------- */
 
 /**
@@ -68,6 +109,26 @@ export interface BackendCustomOptimizeRequest {
   time_windows?: BackendTimeWindow[] | null
 }
 
+/* ---- POST /optimize (mode='graph') --------------------------------------- */
+
+/**
+ * Build the fleet instance from a real OSM graph: the depot is a real junction,
+ * the stops are real junctions, every leg is a Dijkstra path on those roads,
+ * and the response carries the road-following geometry for each route.
+ */
+export interface BackendGraphOptimizeRequest {
+  mode: 'graph'
+  solver: SolverId
+  seed: number
+  graph_key?: string
+  center?: [number, number]
+  dist_m?: number
+  stops: number
+  vehicles: number
+  capacity: number
+  traffic: boolean
+}
+
 /* ---- POST /optimize response -------------------------------------------- */
 
 export interface BackendOptimizeRoute {
@@ -77,6 +138,8 @@ export interface BackendOptimizeRoute {
   load: number
   distance_m: number
   time_s: number
+  /** Road-following [lng, lat] polyline. Empty outside mode='graph'. */
+  geometry: [number, number][]
 }
 
 export interface BackendConvergencePoint {
@@ -110,6 +173,34 @@ export interface BackendOptimizeResponse {
    */
   solver_diagnostics: Record<string, number | string | boolean | number[]>
   routes: BackendOptimizeRoute[]
+  /** Depot + stops as the backend resolved them (all modes). */
+  points: {
+    id: number
+    lng: number
+    lat: number
+    demand: number
+    is_depot: boolean
+  }[]
+  /** Present only for mode='graph'. */
+  graph: {
+    graph_key: string
+    place: string
+    center: [number, number] | null
+    bounds: [number, number, number, number] | null
+    nodes: number
+    edges: number
+    total_length_km: number
+  } | null
+  /** Live readings taken before the solve; null when no feed answered. */
+  traffic: {
+    source: string
+    observed_at: string
+    probes: number
+    failed: number
+    mean_current_kmh: number
+    mean_free_flow_kmh: number
+    readings: Record<string, number | string | boolean>[]
+  } | null
 }
 
 /* ---- POST /route --------------------------------------------------------- */

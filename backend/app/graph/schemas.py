@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +35,16 @@ class GraphMetadata(BaseModel):
         None,
         ge=0,
         description="Node count of the largest strongly-connected component",
+    )
+    center: Optional[List[float]] = Field(
+        None,
+        description="Centre of the loaded area as [lng, lat] — where the map should fly",
+        examples=[[77.5946, 12.9716]],
+    )
+    bounds: Optional[List[float]] = Field(
+        None,
+        description="Loaded area as [min_lng, min_lat, max_lng, max_lat]",
+        examples=[[77.58, 12.96, 77.61, 12.98]],
     )
 
     model_config = {

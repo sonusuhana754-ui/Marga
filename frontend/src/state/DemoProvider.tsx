@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { BetaPoint, OptimizeResponse, RouteResponse, SolverId } from '@/types/api'
+import type {
+  BetaPoint,
+  LoadedArea,
+  LngLat,
+  OptimizeResponse,
+  RouteResponse,
+  SolverId,
+} from '@/types/api'
 import { runOptimize, runRoute } from '@/api/optimize'
-import { AREA, API_BASE, ASSUMPTIONS, DEFAULT_PROFILE, DEFAULT_SOLVER, SOLVERS } from '@/config'
+import { fetchTraffic, loadAreaByCenter, loadAreaByPlace } from '@/api/graph'
+import { AREA, ASSUMPTIONS, DEFAULT_PROFILE, DEFAULT_SOLVER, SOLVERS } from '@/config'
 import { DemoCtx } from './demoStore'
 import type { DemoValue, Mode, View } from './demoStore'
 
@@ -11,6 +19,10 @@ function betaSeriesOf(run: OptimizeResponse | null): BetaPoint[] | null {
   const history = run?.diagnostics.beta_history
   if (!history || history.length === 0) return null
   return history.map((beta, iteration) => ({ iteration, beta }))
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 export function DemoProvider({ children }: { children: ReactNode }) {
@@ -25,21 +37,104 @@ export function DemoProvider({ children }: { children: ReactNode }) {
   const [singleError, setSingleError] = useState<string | null>(null)
   const [selectedVehicle, setSelectedVehicle] = useState<number | null>(null)
 
+  // The loaded OSM area: which roads exist, which key /route is asked about,
+  // and where the map flies. Ref + state so async flows never read a stale one.
+  const [area, setArea] = useState<LoadedArea | null>(null)
+  const [areaLoading, setAreaLoading] = useState(false)
+  const [areaError, setAreaError] = useState<string | null>(null)
+  const [picking, setPicking] = useState(false)
+  const areaRef = useRef<LoadedArea | null>(null)
+  const areaErrorRef = useRef<string | null>(null)
+
+  const [traffic, setTraffic] = useState<DemoValue['traffic']>(null)
+  const [trafficLoading, setTrafficLoading] = useState(false)
+  const [trafficError, setTrafficError] = useState<string | null>(null)
+
+  const refreshTraffic = useCallback(async () => {
+    const current = areaRef.current
+    if (!current) return
+    setTrafficLoading(true)
+    setTrafficError(null)
+    try {
+      setTraffic(await fetchTraffic(current.graph_key))
+    } catch (err) {
+      const message = messageOf(err)
+      setTrafficError(message)
+      console.warn('[traffic] unavailable:', message)
+    } finally {
+      setTrafficLoading(false)
+    }
+  }, [])
+
+  /** Shared load path: sets loading/error state and returns the area or null. */
+  const doLoad = useCallback(
+    async (fetcher: () => Promise<LoadedArea>): Promise<LoadedArea | null> => {
+      setAreaLoading(true)
+      setAreaError(null)
+      areaErrorRef.current = null
+      try {
+        const loaded = await fetcher()
+        areaRef.current = loaded
+        setArea(loaded)
+        setPicking(false)
+        // Fresh area → fresh speeds. Failures land in trafficError, not here.
+        void refreshTraffic()
+        return loaded
+      } catch (err) {
+        const message = messageOf(err)
+        areaErrorRef.current = message
+        setAreaError(message)
+        console.warn('[graphs/load] failed:', message)
+        return null
+      } finally {
+        setAreaLoading(false)
+      }
+    },
+    [refreshTraffic],
+  )
+
+  const loadAreaByPoint = useCallback(
+    async (center: LngLat) => {
+      await doLoad(() => loadAreaByCenter(center, AREA.dist_m))
+    },
+    [doLoad],
+  )
+  const loadAreaByName = useCallback(
+    async (place: string) => {
+      await doLoad(() => loadAreaByPlace(place))
+    },
+    [doLoad],
+  )
+
+  /** Guarantee an area exists before a request that needs one. */
+  const ensureArea = useCallback(async (): Promise<LoadedArea | null> => {
+    if (areaRef.current) return areaRef.current
+    return doLoad(() => loadAreaByCenter(AREA.center, AREA.dist_m))
+  }, [doLoad])
+
   const optimize = useCallback(async () => {
     setStatus('optimizing')
     setError('')
     setSelectedVehicle(null)
+
+    const ready = await ensureArea()
+    if (!ready) {
+      setStatus('error')
+      setError(areaErrorRef.current || 'Could not load an OSM road graph.')
+      return
+    }
+
     const base = {
       city: AREA.id,
       vehicles: 2,
       vehicle_profile: DEFAULT_PROFILE,
       capacity: 100,
-      stops: 10,
+      stops: 14,
       seed: 42,
     }
     const wanted = SOLVERS.map((s) => s.id)
     const settled = await Promise.allSettled(
-      wanted.map((id) => runOptimize({ ...base, solver: id })),
+      wanted.map((id) => runOptimize({ ...base, solver: id }, ready)),
     )
 
     const next: Partial<Record<SolverId, OptimizeResponse>> = {}
@@ -47,7 +142,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     settled.forEach((result, i) => {
       if (result.status === 'fulfilled') next[wanted[i]] = result.value
       else {
-        const reason = result.reason instanceof Error ? result.reason.message : String(result.reason)
+        const reason = messageOf(result.reason)
         failures.push(`${wanted[i]}: ${reason}`)
         console.warn(`[optimize] ${wanted[i]} failed:`, result.reason)
       }
@@ -72,8 +167,8 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         r.routes.reduce((m, route) => Math.max(m, route.timestamps.at(-1) ?? 0), 0)
       const savedM = Math.max(
         0,
-        (baseline.routes.reduce((s, r) => s + r.distance_m, 0) -
-          ours.routes.reduce((s, r) => s + r.distance_m, 0)),
+        baseline.routes.reduce((s, r) => s + r.distance_m, 0) -
+          ours.routes.reduce((s, r) => s + r.distance_m, 0),
       )
       const km = legKm(baseline) - legKm(ours)
       const fuel = Math.max(0, km) * ASSUMPTIONS.fuelPerKm
@@ -94,47 +189,41 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         },
       })
     }
-  }, [])
+  }, [ensureArea])
 
   /** Single-vehicle route, fetched from the backend. Failures stay visible. */
   const singleRequested = useRef(false)
   const loadSingle = useCallback(async () => {
     if (singleRequested.current) return
     singleRequested.current = true
+    setSingleError(null)
+    const ready = await ensureArea()
+    if (!ready) {
+      singleRequested.current = false
+      setSingleError(areaErrorRef.current || 'Could not load an OSM road graph.')
+      return
+    }
     try {
-      setSingle(await runRoute())
+      setSingle(await runRoute(ready))
       setSingleError(null)
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = messageOf(err)
       setSingleError(message)
+      singleRequested.current = false
       console.warn('[route] unavailable:', message)
     }
-  }, [])
+  }, [ensureArea])
 
   /**
-   * Ask the backend to cache the OSM graph for the demo place, then retry the
-   * route. The download is a multi-second OSMnx fetch and can fail on its own,
-   * so its failure is reported through the same `singleError` string.
+   * Re-attempt the single-vehicle route: re-download the graph if the area is
+   * still missing, then ask `/route` again. The failure reason, when there is
+   * one, is the backend's own and is rendered verbatim.
    */
   const retrySingle = useCallback(async () => {
-    singleRequested.current = true
+    singleRequested.current = false
     setSingleError(null)
-    try {
-      const res = await fetch(`${API_BASE}/graphs/load`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ place: AREA.place, force_reload: false }),
-      })
-      if (!res.ok) throw new Error(`graphs/load ${res.status}`)
-      setSingle(await runRoute())
-      setSingleError(null)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      singleRequested.current = false
-      setSingleError(message)
-      console.warn('[graphs/load] failed:', message)
-    }
-  }, [])
+    await loadSingle()
+  }, [loadSingle])
 
   const setMode = useCallback(
     (m: Mode) => {
@@ -177,6 +266,13 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       // the map blank when the other solver is the one with a result.
       activeRun,
       betaSeries: betaSeriesOf(activeRun),
+      area,
+      areaLoading,
+      areaError,
+      picking,
+      traffic,
+      trafficLoading,
+      trafficError,
       single,
       singleError,
       selectedVehicle,
@@ -186,6 +282,10 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       setSolver,
       optimize,
       retrySingle,
+      loadAreaByPoint,
+      loadAreaByName,
+      setPicking,
+      refreshTraffic,
       selectVehicle,
       reset,
     }),
@@ -198,12 +298,22 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       error,
       runs,
       activeRun,
+      area,
+      areaLoading,
+      areaError,
+      picking,
+      traffic,
+      trafficLoading,
+      trafficError,
       single,
       singleError,
       selectedVehicle,
       setMode,
       optimize,
       retrySingle,
+      loadAreaByPoint,
+      loadAreaByName,
+      refreshTraffic,
       selectVehicle,
       reset,
     ],

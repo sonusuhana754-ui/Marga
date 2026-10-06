@@ -2,31 +2,67 @@
 
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.graph.schemas import GraphMetadata
 
 
 class GraphLoadRequest(BaseModel):
-    """Request body for loading a graph from OpenStreetMap."""
+    """Request body for loading a graph from OpenStreetMap.
 
-    place: str = Field(
-        ...,
+    Give either a *place* name or a geographic *center* ``[lng, lat]`` (plus a
+    radius) — the latter is how the map loads any point on Earth without
+    needing its administrative name. Exactly one of the two is required.
+    """
+
+    place: Optional[str] = Field(
+        None,
         min_length=1,
-        description="OpenStreetMap place name (e.g. 'Manhattan, New York, USA')",
+        description="OpenStreetMap place name (e.g. 'Manhattan, New York, USA').",
         examples=["Manhattan, New York, USA"],
+    )
+    center: Optional[List[float]] = Field(
+        None,
+        min_length=2,
+        max_length=2,
+        description="Alternative to `place`: load the drivable network within "
+        "`dist_m` of this [lng, lat] point (WGS84).",
+        examples=[[77.5946, 12.9716]],
+    )
+    dist_m: int = Field(
+        default=1200,
+        ge=300,
+        le=3000,
+        description="Radius in metres used with `center`. Bounded to keep a "
+        "single request from downloading a whole city.",
     )
     force_reload: bool = Field(
         default=False,
-        description="If true, discard any cached graph for this place and fetch fresh data.",
+        description="If true, discard any cached graph for this key and fetch fresh data.",
     )
+
+    @model_validator(mode="after")
+    def _require_exactly_one_target(self) -> "GraphLoadRequest":
+        if self.place is None and self.center is None:
+            raise ValueError("either 'place' or 'center' must be provided")
+        if self.center is not None:
+            lng, lat = float(self.center[0]), float(self.center[1])
+            if not -180.0 <= lng <= 180.0:
+                raise ValueError("center lng must be between -180 and 180")
+            if not -90.0 <= lat <= 90.0:
+                raise ValueError("center lat must be between -90 and 90")
+        return self
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "place": "Manhattan, New York, USA",
                 "force_reload": False,
-            }
+            },
+            "examples": [
+                {"place": "Manhattan, New York, USA", "force_reload": False},
+                {"center": [77.5946, 12.9716], "dist_m": 1200},
+            ],
         }
     }
 

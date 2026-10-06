@@ -7,24 +7,24 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.core.logging import get_logger
 from app.schemas.graph import GraphLoadRequest, GraphLoadResponse, GraphMetadataListResponse
-from app.services.graph_service import GraphService
+from app.services.runtime import graph_service as _graph_service
 
 router = APIRouter()
 logger = get_logger("marga.api.v1.graph")
 
-_graph_service = GraphService()
 _executor = ThreadPoolExecutor(max_workers=2)
 
-_LOADING_ERROR_DETAIL = "OpenStreetMap data could not be fetched. Verify the place name and try again."
+_LOADING_ERROR_DETAIL = "OpenStreetMap data could not be fetched. Verify the place name or coordinates and try again."
 
 
 @router.post(
     "/graphs/load",
     response_model=GraphLoadResponse,
     status_code=status.HTTP_200_OK,
-    summary="Load an OSM road graph",
-    description="Fetch a drivable road graph for the given place name from OpenStreetMap. "
-    "The result is cached in memory for subsequent requests.",
+    summary="Load an OSM road graph anywhere in the world",
+    description="Fetch a drivable road graph either for a place name or around a "
+    "[lng, lat] point within `dist_m`, from OpenStreetMap. The result is cached "
+    "in memory for subsequent requests.",
 )
 def load_graph(body: GraphLoadRequest) -> GraphLoadResponse:
     """
@@ -33,7 +33,11 @@ def load_graph(body: GraphLoadRequest) -> GraphLoadResponse:
     """
     try:
         future = _executor.submit(
-            _graph_service.load, body.place, body.force_reload
+            _graph_service.load,
+            body.place,
+            body.force_reload,
+            center=body.center,
+            dist_m=body.dist_m,
         )
         result = future.result(timeout=120)
     except ValueError:
@@ -42,7 +46,7 @@ def load_graph(body: GraphLoadRequest) -> GraphLoadResponse:
             detail=_LOADING_ERROR_DETAIL,
         )
     except Exception:
-        logger.exception("Unexpected error loading graph for place=%s", body.place)
+        logger.exception("Unexpected error loading graph for %s", body.place or body.center)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="An unexpected error occurred while loading graph data.",

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import benchmark, graph, health, optimize, route
+from app.api.v1.endpoints import benchmark, graph, health, optimize, route, traffic
 
 api_router = APIRouter()
 
@@ -11,6 +11,10 @@ api_router.include_router(
 api_router.include_router(
     graph.router,
     tags=["Graph"],
+)
+api_router.include_router(
+    traffic.router,
+    tags=["Traffic"],
 )
 api_router.include_router(
     route.router,

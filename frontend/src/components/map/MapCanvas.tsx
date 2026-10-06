@@ -21,6 +21,10 @@ interface MapCanvasProps {
  * Full-bleed MapLibre canvas. Children mount once the style is ready. A slow
  * tile provider never blocks the view — it just shows a small note while the
  * map keeps loading in the background.
+ *
+ * The view is the whole planet: no bounding box and no zoom clamp, so any
+ * point on Earth can be panned to and loaded. `AREA` only decides where the
+ * map opens.
  */
 export function MapCanvas({ children }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -37,10 +41,6 @@ export function MapCanvas({ children }: MapCanvasProps) {
       zoom: AREA.zoom,
       minZoom: AREA.minZoom,
       maxZoom: AREA.maxZoom,
-      maxBounds: [
-        [AREA.bbox[0] - 0.06, AREA.bbox[1] - 0.06],
-        [AREA.bbox[2] + 0.06, AREA.bbox[3] + 0.06],
-      ],
       attributionControl: false,
       dragRotate: false,
       pitchWithRotate: false,

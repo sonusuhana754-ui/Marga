@@ -5,6 +5,7 @@ import { BlockedEdges } from '@/components/map/BlockedEdges'
 import { FleetLayer } from '@/components/map/FleetLayer'
 import { VehicleMarkers } from '@/components/map/VehicleMarkers'
 import { Waypoints } from '@/components/map/Waypoints'
+import { AreaFramer, AreaPicker } from '@/components/map/AreaPicker'
 import { TopBar } from '@/components/chrome/TopBar'
 import { ControlDock } from '@/components/chrome/ControlDock'
 import { TransportControls } from '@/components/chrome/TransportControls'
@@ -21,6 +22,7 @@ import { useDemo } from '@/state/demoStore'
 import { useSimClock } from '@/state/simClock'
 import { DEFAULT_PROFILE, AREA } from '@/config'
 import { DEPOT, STOPS } from '@/scene'
+import type { LngLat } from '@/types/api'
 
 export function Dashboard() {
   const {
@@ -32,6 +34,7 @@ export function Dashboard() {
     runs,
     activeRun,
     betaSeries,
+    area,
     single,
     singleError,
     retrySingle,
@@ -39,6 +42,22 @@ export function Dashboard() {
     selectVehicle,
   } = useDemo()
   const clock = useSimClock()
+
+  // Depot/stops on the map. The backend's own points win — they are what the
+  // solver actually routed on. Scene pins appear only while no area exists:
+  // once a real graph is loaded, hand-placed pins would misrepresent it.
+  const scenarioPoints = activeRun?.points ?? []
+  const backendDepot = scenarioPoints.find((p) => p.is_depot)
+  const backendStops = scenarioPoints.filter((p) => !p.is_depot)
+  const waypoints =
+    backendDepot && backendStops.length > 0
+      ? {
+          depot: [backendDepot.lng, backendDepot.lat] as LngLat,
+          stops: backendStops.map((p) => [p.lng, p.lat] as LngLat),
+        }
+      : area
+        ? null
+        : { depot: DEPOT, stops: STOPS }
 
   const fleetReady = mode === 'fleet' && status === 'ready' && activeRun !== null
   const selectedRoute =
@@ -84,7 +103,9 @@ export function Dashboard() {
             <VehicleMarkers routes={activeRun!.routes} selected={selectedVehicle} />
           </>
         )}
-        <Waypoints depot={DEPOT} stops={STOPS} />
+        {waypoints && <Waypoints depot={waypoints.depot} stops={waypoints.stops} />}
+        <AreaPicker />
+        <AreaFramer />
       </MapCanvas>
 
       {view === 'benchmark' && <BenchmarkView />}
@@ -161,7 +182,7 @@ export function Dashboard() {
       {import.meta.env.DEV && (
         <div className="pointer-events-none absolute bottom-1.5 left-4 z-10">
           <span className="label-mono !text-[9px] !text-ink-mute/50">
-            dev · {AREA.label} · area not locked
+            dev · {area?.label ?? AREA.label} · world view
           </span>
         </div>
       )}

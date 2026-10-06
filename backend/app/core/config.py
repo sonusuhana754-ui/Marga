@@ -48,6 +48,12 @@ class Settings(BaseSettings):
             return v
         return []
 
+    # Traffic volatility feed (VA-QPSO adaptive-β input).
+    # TomTom Traffic Flow key. Empty means no feed: the rolling volatility
+    # window stays empty and beta sits at its exploitation floor, which the
+    # API reports as ``volatility_signal: false`` instead of simulating data.
+    TOMTOM_API_KEY: str = ""
+
     # Database Configuration
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"

@@ -24,10 +24,12 @@ with `VITE_API_BASE` — put the override in an untracked `.env.local`.
 
 | Screen / feature | Notes |
 | --- | --- |
-| **Live** — single vehicle | `POST /route` on the backend's cached OSM graph. If the graph is not loaded, the panel prints the backend's own reason and offers "Load OSM graph & retry" |
-| **Live** — fleet | Optimize → all three solvers run (`ortools`, `qpso`, `va_qpso`); routes, costs, runtimes and the cost delta come from the responses; click a route → vehicle panel + "why this route" |
+| **Live** — anywhere on Earth | Map has no bounding box or zoom lock. Arm "pick a place" and click the map, or type a place name; the backend downloads that area's real OSM road network (`POST /api/v1/graphs/load`) and the view fits itself to it |
+| **Live** — single vehicle | `POST /route` on the loaded OSM graph. The area is auto-loaded first; if the download fails the panel prints the backend's own reason |
+| **Live** — fleet | Optimize → all three solvers run (`ortools`, `qpso`, `va_qpso`) on depot/stops the backend picked from real junctions; routes are drawn along the returned road geometry, not straight lines |
+| **Live** — traffic line | live km/h from `GET /traffic/snapshot`, with its own refresh; `configured: false` and "feed did not answer" are distinct, visible states |
 | **Live** — sim clock | play / pause / scrub / speed; vehicle dots interpolate along the measured route timestamps |
-| **Live** — β inspector | measured β, one point per iteration, from `solver_diagnostics.beta_history`; states plainly when `volatility_signal: false` (no traffic feed, β at its floor) |
+| **Live** — β inspector | measured β, one point per iteration, from `solver_diagnostics.beta_history`, plus the probe batch the window was fed (source, time, speeds); states plainly when `volatility_signal: false` (no traffic feed, β at its floor) |
 | **Live** — impact strip | only rendered when VA-QPSO actually beats OR-Tools. Distance is a difference of reported leg distances; time, fuel and CO₂ are labelled as modelled from `ASSUMPTIONS` |
 | **Benchmark** tab | `POST /api/v1/benchmark` — gap-to-best, convergence (drawn only for solvers that report a trace), results table + CSV, and a "Measured · live backend" badge |
 | **Guided demo** | 7 beats; Next / ← / Esc. Captions describe what the backend actually does |
@@ -36,7 +38,8 @@ with `VITE_API_BASE` — put the override in an untracked `.env.local`.
 
 | Concern | Where |
 | --- | --- |
-| Map area (bbox, centre, zoom) | `src/config.ts` → `AREA` — **placeholder (Koramangala) until backend locks the sub-graph** |
+| Map view | `src/config.ts` → `AREA` is the **initial view only** — no bbox, no `maxBounds`, no zoom lock. The area itself is loaded state (`useDemo().area`) |
+| Area picker | `src/components/map/AreaPicker.tsx` — click-to-load (`AreaPicker`) and fit-to-bounds (`AreaFramer`) |
 | API contract types | `src/types/api.ts` (what the UI renders) and `src/api/backendTypes.ts` (wire format) |
 | Wire ↔ UI translation | `src/api/adapter.ts` — the only place the two contracts differ |
 | Scene coordinates | `src/scene/` — depot and stop pins only. Scene data, never results |
@@ -46,17 +49,30 @@ with `VITE_API_BASE` — put the override in an untracked `.env.local`.
 ## Endpoints consumed
 
 ```
-POST /api/v1/optimize           fleet VRP — routes[] with timestamps[], convergence[], solver_diagnostics{}
+POST /api/v1/optimize           fleet VRP — routes[] with geometry[], points[], area{}, traffic{}, convergence[], solver_diagnostics{}
 POST /api/v1/route              single vehicle — { unconstrained, best, blocked_edges }
-POST /api/v1/graphs/load        OSM graph download, triggered from the single-vehicle panel
+POST /api/v1/graphs/load        OSM graph download by place name or center + dist_m
+GET  /api/v1/traffic/snapshot   live per-leg readings for the loaded graph
 POST /api/v1/benchmark          per-solver cost / gap_pct / runtime_ms / convergence
 GET  /api/v1/benchmark/solvers  solver registry
 ```
 
-There is **no `/stream` and no `/reoptimize`** in the backend, so the UI has no live
-volatility feed, no zone heat map and no status pills for threshold crossings. Those
-were removed rather than simulated: the β inspector plots the solver's own history
-instead.
+There is **no `/stream` and no `/reoptimize`** in the backend, so the UI has no zone
+heat map and no status pills for threshold crossings. Those were removed rather than
+simulated: the β inspector plots the solver's own history instead. Traffic arrives the
+way it actually exists — one probe batch per solve — and when no API key is configured
+the response says `traffic: null` rather than substituting speeds.
+
+## Tests
+
+```bash
+npm test             # vitest — adapter contract tests (request/response translation)
+```
+
+The adapter tests pin the two things a refactor could silently break: that a loaded
+area produces `mode: 'graph'` against the right `graph_key`, and that a response's
+road geometry, points, area and traffic reach the UI untouched (with `null` traffic
+staying `null`).
 
 ## Build & deploy
 
@@ -64,6 +80,7 @@ instead.
 npm run build        # tsc + vite build → dist/
 npm run preview      # serve the build locally
 npm run lint         # oxlint
+npm test             # vitest run
 ```
 
 Deploy `dist/` to Vercel as a static site (framework preset: **Vite**), and point

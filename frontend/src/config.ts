@@ -6,28 +6,28 @@
 import type { SolverId, VehicleProfile } from '@/types/api'
 
 /**
- * The Bengaluru sub-graph the whole demo centres on.
+ * Where the map *opens* — and how far the default area download reaches.
  *
- * PLACEHOLDER — Koramangala. The backend has not yet locked the real OSMnx
- * sub-graph. When it does, change `center` / `bbox` / `zoom` here and move the
- * pins in `src/scene/data/points.json` to match. Nothing else references
- * hard-coded coordinates.
+ * This is an initial view, not a boundary: the canvas has no maxBounds, so the
+ * user can pan anywhere on Earth and the backend will fetch whatever road
+ * network they point at. `place` is only the fallback label for the
+ * single-vehicle call; `center`/`dist_m` is the default download target when a
+ * run needs a graph and none has been chosen yet.
  */
 export const AREA = {
   id: 'bengaluru_koramangala',
-  /**
-   * The backend's graph cache is keyed by *place name*, not by the AREA id, and
-   * `POST /api/v1/graphs/load` has to resolve it through OSMnx. Used only by the
-   * single-vehicle route call.
-   */
+  /** Default place name, used when a named load is wanted over a point load. */
   place: 'Koramangala, Bengaluru, India',
   label: 'Koramangala, Bengaluru',
   locked: false,
+  /** Default download target: [lng, lat] and radius in metres. */
   center: [77.6309, 12.9352] as [number, number],
+  dist_m: 1200,
+  /** Reference extent for the opening frame only. */
   bbox: [77.61, 12.92, 77.652, 12.952] as [number, number, number, number],
   zoom: 13.6,
-  minZoom: 11,
-  maxZoom: 17,
+  minZoom: 2,
+  maxZoom: 18,
 }
 
 /** Keyless dark base map. Carto Dark Matter — OSM data, no API key, no billing. */

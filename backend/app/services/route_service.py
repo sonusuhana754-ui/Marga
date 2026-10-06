@@ -27,8 +27,15 @@ class RouteService:
         Returns a :class:`SingleRoute` with path coordinates, distance, and ETA.
         Raises ``ValueError`` if the graph is not cached or no path exists.
         """
-        key = _normalize_key(req.city)
+        # Callers pass back the exact `graph_key` the graphs endpoint issued
+        # (e.g. a point-based load, whose key is already normalised); older
+        # callers pass a place name, which still needs normalising. Try the
+        # literal value first so a round-tripped key is honoured as-is.
+        key = req.city
         G = self._cache.get(key)
+        if G is None:
+            key = _normalize_key(req.city)
+            G = self._cache.get(key)
         if G is None:
             raise ValueError(f"No cached graph for city '{req.city}' (key={key})")
 

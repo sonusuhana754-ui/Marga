@@ -110,6 +110,65 @@ export interface RouteResponse {
   method: string
 }
 
+/* ---- POST /graphs/load (the loaded OSM area) ---------------------------- */
+
+/**
+ * A drivable OSM sub-graph the backend has actually downloaded, identified by
+ * `graph_key`. Everything geographic in the UI keys off this: which roads the
+ * solvers route on, which key `/route` is asked about, and where the map flies.
+ */
+export interface LoadedArea {
+  graph_key: string
+  /** Backend's label: a place name, or a point + radius. */
+  place: string
+  /** Short label for the header. Derived from `place`, never invented. */
+  label: string
+  /** [lng, lat] centre of the loaded extent, when the backend reported one. */
+  center: LngLat | null
+  /** [min_lng, min_lat, max_lng, max_lat] of the loaded extent, if known. */
+  bounds: [number, number, number, number] | null
+  nodes: number
+  edges: number
+  total_length_km: number
+}
+
+/* ---- GET /traffic/snapshot (live speeds) -------------------------------- */
+
+export interface TrafficReading {
+  /** Route leg this reading was taken for, as `"a-b"` stop indices. */
+  leg?: string
+  lng: number
+  lat: number
+  current_kmh: number
+  free_flow_kmh: number
+  /** current / free-flow travel time. 1.0 = running free, >1 = delayed. */
+  delay_ratio: number
+  confidence: number
+  road_closure: boolean
+}
+
+export interface TrafficSnapshot {
+  source: string
+  /** UTC ISO-8601 timestamp of the probe batch. */
+  observed_at: string
+  probes: number
+  failed: number
+  mean_current_kmh: number
+  mean_free_flow_kmh: number
+  readings: TrafficReading[]
+}
+
+/**
+ * The traffic panel's state. `configured: false` means no key is set;
+ * `snapshot: null` with `configured: true` means the feed did not answer.
+ * Neither case is ever filled in with simulated speeds.
+ */
+export interface TrafficState {
+  configured: boolean
+  snapshot: TrafficSnapshot | null
+  detail: string | null
+}
+
 /* ---- POST /optimize (fleet VRP) --------------------------------------- */
 
 export interface OptimizeRequest {
@@ -130,10 +189,26 @@ export interface DecisionWeights {
   constraints: number
 }
 
+/** A depot or delivery stop as the backend resolved it. */
+export interface ScenarioPoint {
+  id: number
+  lng: number
+  lat: number
+  demand: number
+  is_depot: boolean
+}
+
 export interface FleetRoute {
   vehicle_id: number
   /** indices into the scenario's stop list; starts and ends at the depot (0) */
   stop_sequence: number[]
+  /**
+   * The line this route is drawn and animated along.
+   *
+   * For `mode:'graph'` runs this is the backend's road-following geometry, so
+   * the route follows real streets. Otherwise it is the stop sequence itself —
+   * in-code scenarios have no road geometry, and none is invented for them.
+   */
   path: LngLat[]
   /** seconds from run start, one per path vertex — drives marker animation */
   timestamps: number[]
@@ -177,6 +252,12 @@ export interface OptimizeResponse {
   convergence: ConvergencePoint[]
   impact: ImpactFigures
   /**
+   * Depot and stops exactly as the backend resolved them. The map draws these
+   * when present; empty means the response carried none, in which case the
+   * scene pins are shown instead (and nothing claims they were solved on).
+   */
+  points: ScenarioPoint[]
+  /**
    * Where the numbers in this payload came from. `backend` is the only value:
    * the api layer has no fixture mode, so a failed request surfaces as an
    * error instead of a payload with a different origin.
@@ -184,6 +265,17 @@ export interface OptimizeResponse {
   source?: 'backend'
   /** Extras the solver chose to report; absent keys mean "not reported". */
   diagnostics: SolverDiagnostics
+  /**
+   * The OSM area the scenario was built on. Present only for `mode:'graph'`
+   * runs; when it is, the depot/stops on the map come from the backend's
+   * `points` rather than the scene pins.
+   */
+  area?: LoadedArea | null
+  /**
+   * Live traffic readings taken before this solve. Null when no feed is
+   * configured or none answered — the panels say so instead of inventing any.
+   */
+  traffic?: TrafficSnapshot | null
 }
 
 /**

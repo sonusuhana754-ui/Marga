@@ -13,11 +13,15 @@ __all__ = [
     "CustomStop",
     "CustomTimeWindow",
     "CustomVehicle",
+    "GraphRef",
+    "GraphScenarioRequest",
     "NamedScenarioRequest",
     "OptSolver",
     "OptimizeRequest",
     "OptimizeResponse",
     "OptimizeRoute",
+    "ScenarioPoint",
+    "TrafficSnapshot",
 ]
 
 
@@ -41,6 +45,65 @@ class OptimizeRoute(BaseModel):
     load: int = Field(..., ge=0, description="Total load carried by the vehicle")
     distance_m: float = Field(..., ge=0.0, description="Route distance in metres")
     time_s: float = Field(..., ge=0.0, description="Route travel time in seconds")
+    geometry: List[List[float]] = Field(
+        default_factory=list,
+        description=(
+            "Road-following polyline as [lng, lat] vertices, present when the "
+            "scenario was built from a real OSM graph (mode='graph'). Empty "
+            "for in-code scenarios, which have no road geometry to draw — the "
+            "client must not invent one."
+        ),
+    )
+
+
+class ScenarioPoint(BaseModel):
+    """A depot or delivery stop as the backend actually resolved it."""
+
+    id: int = Field(..., ge=0, description="Stop index (0 is the depot)")
+    lng: float = Field(..., description="Longitude in degrees (WGS84)")
+    lat: float = Field(..., description="Latitude in degrees (WGS84)")
+    demand: int = Field(..., ge=0, description="Demand at this stop (units)")
+    is_depot: bool = Field(default=False, description="True for the depot")
+
+
+class GraphRef(BaseModel):
+    """Reference to the OSM graph a scenario was built on."""
+
+    graph_key: str = Field(..., description="Cache key of the loaded graph")
+    place: str = Field(..., description="Place label or point description")
+    center: Optional[List[float]] = Field(
+        None, description="Centre of the loaded area as [lng, lat]"
+    )
+    bounds: Optional[List[float]] = Field(
+        None,
+        description="Loaded area as [min_lng, min_lat, max_lng, max_lat], for framing the map",
+    )
+    nodes: int = Field(..., ge=0, description="Nodes in the loaded graph")
+    edges: int = Field(..., ge=0, description="Directed edges in the loaded graph")
+    total_length_km: float = Field(
+        ..., ge=0.0, description="Total road length in the loaded graph (km)"
+    )
+
+
+class TrafficSnapshot(BaseModel):
+    """Live traffic readings consumed by the adaptive-β path for this run."""
+
+    source: str = Field(..., description="Feed identifier, e.g. 'tomtom'")
+    observed_at: str = Field(
+        ..., description="UTC ISO-8601 timestamp of the probe batch"
+    )
+    probes: int = Field(..., ge=0, description="Successful probe readings")
+    failed: int = Field(..., ge=0, description="Probes that returned no data")
+    mean_current_kmh: float = Field(
+        ..., ge=0.0, description="Mean observed speed across probes (km/h)"
+    )
+    mean_free_flow_kmh: float = Field(
+        ..., ge=0.0, description="Mean free-flow speed across probes (km/h)"
+    )
+    readings: List[dict] = Field(
+        default_factory=list,
+        description="Per-probe readings: leg, coordinates, speeds, delay ratio",
+    )
 
 
 class OptimizeResponse(BaseModel):
@@ -82,6 +145,26 @@ class OptimizeResponse(BaseModel):
     solver_diagnostics: dict = Field(
         default_factory=dict,
         description="Solver-specific diagnostics (iterations, evaluations, mean beta).",
+    )
+    points: List[ScenarioPoint] = Field(
+        default_factory=list,
+        description=(
+            "Depot and stops as resolved by the backend. Populated for every "
+            "mode; when present the client must draw these instead of its own "
+            "hard-coded pins."
+        ),
+    )
+    graph: Optional[GraphRef] = Field(
+        default=None,
+        description="The OSM graph this scenario ran on (mode='graph' only).",
+    )
+    traffic: Optional[TrafficSnapshot] = Field(
+        default=None,
+        description=(
+            "Live traffic readings taken before this solve, if a feed is "
+            "configured. Null means no feed was consulted — never a "
+            "simulated one."
+        ),
     )
 
 
@@ -235,7 +318,71 @@ class CustomScenarioRequest(BaseModel):
         return self
 
 
+# Graph-backed scenario: build a fleet instance from a real OSM road network
+class GraphScenarioRequest(BaseModel):
+    mode: Literal["graph"] = Field(
+        ...,
+        description="Request mode: generate a scenario from a real OSM graph.",
+    )
+    solver: OptSolver = Field(
+        ...,
+        description="Solver to run (see NamedScenarioRequest.solver).",
+        examples=[DEFAULT_SOLVER],
+    )
+    seed: int = Field(
+        default=0,
+        ge=0,
+        description="PRNG seed for stop generation; same seed + graph = same scenario.",
+    )
+    graph_key: Optional[str] = Field(
+        default=None,
+        description="Key of an already-loaded graph (from POST /graphs/load).",
+    )
+    center: Optional[List[float]] = Field(
+        default=None,
+        min_length=2,
+        max_length=2,
+        description="Alternative to graph_key: [lng, lat]. The graph within "
+        "`dist_m` is downloaded on demand (slow on a cold cache).",
+        examples=[[77.5946, 12.9716]],
+    )
+    dist_m: int = Field(
+        default=1200,
+        ge=300,
+        le=3000,
+        description="Radius in metres used with `center`.",
+    )
+    stops: int = Field(
+        default=18,
+        ge=4,
+        le=80,
+        description="Number of delivery stops drawn from real road junctions.",
+    )
+    vehicles: int = Field(default=3, ge=1, le=20, description="Number of vehicles.")
+    capacity: int = Field(default=20, ge=1, description="Capacity of each vehicle.")
+    traffic: bool = Field(
+        default=True,
+        description=(
+            "Probe live traffic for this scenario's legs before solving so the "
+            "adaptive-β window receives real observations. Has no effect when "
+            "no feed is configured."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _require_graph_target(self) -> "GraphScenarioRequest":
+        if self.graph_key is None and self.center is None:
+            raise ValueError("either 'graph_key' or 'center' must be provided")
+        if self.center is not None:
+            lng, lat = float(self.center[0]), float(self.center[1])
+            if not -180.0 <= lng <= 180.0:
+                raise ValueError("center lng must be between -180 and 180")
+            if not -90.0 <= lat <= 90.0:
+                raise ValueError("center lat must be between -90 and 90")
+        return self
+
+
 OptimizeRequest = Annotated[
-    Union[NamedScenarioRequest, CustomScenarioRequest],
+    Union[NamedScenarioRequest, CustomScenarioRequest, GraphScenarioRequest],
     Field(discriminator="mode"),
 ]

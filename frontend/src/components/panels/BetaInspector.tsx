@@ -98,6 +98,28 @@ export function BetaInspector({ series, run }: BetaInspectorProps) {
         </span>
       </div>
 
+      {/* Live feed the β window was actually fed, when one answered. */}
+      {run.traffic && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-t border-line px-4 py-2 text-[10.5px] text-ink-mute">
+          <span className="label-mono !text-[9px] !text-marga">{run.traffic.source} live</span>
+          <span className="tnum">
+            {run.traffic.probes} leg probes
+            {run.traffic.failed > 0 ? ` · ${run.traffic.failed} failed` : ''}
+          </span>
+          <span className="tnum">
+            {run.traffic.mean_current_kmh.toFixed(0)} /{' '}
+            {run.traffic.mean_free_flow_kmh.toFixed(0)} km/h current / free-flow
+          </span>
+          <span className="tnum">
+            {new Date(run.traffic.observed_at).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            })}
+          </span>
+        </div>
+      )}
+
       <p className="border-t border-line bg-surface-2/40 px-4 py-2.5 text-[11px] leading-relaxed text-ink-dim">
         {d.volatility_signal === false ? (
           <>
@@ -108,9 +130,10 @@ export function BetaInspector({ series, run }: BetaInspectorProps) {
           </>
         ) : hasSignal ? (
           <>
-            β is derived per particle from the rolling variance of the traffic
-            observations on the edges its route covers. Each point here is the
-            swarm mean for that iteration, as the solver used it.
+            β is derived per particle from the rolling variance of the live
+            traffic observations on the legs its route covers. Each point here
+            is the swarm mean for that iteration, as the solver used it; the
+            readings above are what fed the window.
           </>
         ) : (
           <>

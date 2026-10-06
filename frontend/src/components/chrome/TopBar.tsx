@@ -1,5 +1,4 @@
 import { Play } from 'lucide-react'
-import { AREA } from '@/config'
 import { useDemo } from '@/state/demoStore'
 import type { View } from '@/state/demoStore'
 import { Segmented } from '@/components/ui/controls'
@@ -25,13 +24,15 @@ const VIEW_OPTIONS: { value: View; label: string }[] = [
 ]
 
 export function TopBar() {
-  const { view, setView, guided, setGuided, runs } = useDemo()
+  const { view, setView, guided, setGuided, runs, area, areaLoading } = useDemo()
 
   // "live" means every solver result on screen came back from the FastAPI
   // backend. The api layer has no fixture mode, so this is the only badge.
   const solved = Object.values(runs).some((r) => r !== undefined)
   const fromBackend = solved && Object.values(runs).every((r) => r?.source === 'backend')
   const badge = solved ? (fromBackend ? 'live · backend' : 'no result') : null
+
+  const areaLabel = areaLoading ? 'loading road network…' : area?.label ?? 'world · no area loaded'
 
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex items-start justify-between p-4">
@@ -46,12 +47,11 @@ export function TopBar() {
             <div className="mt-1 flex items-center gap-1.5">
               <span
                 className={`inline-block h-1.5 w-1.5 rounded-full ${
-                  AREA.locked ? 'bg-green' : 'bg-amber'
+                  area ? 'bg-green' : areaLoading ? 'bg-amber' : 'bg-ink-mute'
                 }`}
               />
               <span className="label-mono !text-[9.5px] !tracking-[0.12em] !text-ink-dim">
-                {AREA.label}
-                {!AREA.locked && ' · area not locked'}
+                {areaLabel}
               </span>
             </div>
           </div>

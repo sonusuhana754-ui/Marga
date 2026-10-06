@@ -13,9 +13,9 @@ interface Beat {
 
 const BEATS: Beat[] = [
   {
-    title: 'The network',
+    title: 'Anywhere on Earth',
     caption:
-      'A depot and delivery stops pinned in Koramangala. The pins are the only hand-authored coordinates — every route, cost and time on screen is computed by the backend for this run.',
+      'Pick a point — or name a place — and the backend downloads that area’s real OSM road network. Nothing is pinned by hand: depot, stops and every junction on the map come from the graph it just fetched.',
     apply: (d) => {
       d.setView('live')
       d.setMode('single')
@@ -25,7 +25,7 @@ const BEATS: Beat[] = [
   {
     title: 'Vehicle constraints',
     caption:
-      'One heavy truck, origin to destination, asked of the backend’s Dijkstra over its cached OSM graph. If that graph has not been loaded the panel reports the backend’s reason instead of drawing a stored route.',
+      'One heavy truck, origin to destination, asked of the backend’s Dijkstra over the loaded OSM graph. If the download has not finished, the panel says so instead of drawing a stored route.',
     apply: (d) => {
       d.setMode('single')
     },
@@ -33,7 +33,7 @@ const BEATS: Beat[] = [
   {
     title: 'The fleet problem',
     caption:
-      '10 stops, 2 trucks. Which truck serves which stops, in what order — the NP-hard part that exact solvers cannot scale to.',
+      '14 stops, 2 trucks, drawn from real junctions on the loaded network. Which truck serves which stops, in what order — the NP-hard part that exact solvers cannot scale to.',
     apply: async (d) => {
       d.setMode('fleet')
       d.selectVehicle(null)
@@ -50,9 +50,9 @@ const BEATS: Beat[] = [
     },
   },
   {
-    title: 'No traffic feed yet',
+    title: 'Live traffic → β',
     caption:
-      'There is no live traffic feed in this deployment, so the rolling volatility window is empty and β sits at its exploitation floor. The solver reports volatility_signal: false — degradation stated, not hidden.',
+      'Before each solve the backend probes the scenario’s real road legs against TomTom’s live flow feed. One run records one observation per leg; a second run gives the rolling window a variance, so β rises where measured speeds actually moved. With no API key the response says traffic: null and volatility_signal: false — degradation stated, not hidden.',
     apply: (_d, c) => {
       c.pause()
     },
@@ -60,7 +60,7 @@ const BEATS: Beat[] = [
   {
     title: 'β per iteration',
     caption:
-      'β as the swarm actually used it: one measured value per iteration, read back from the solver’s diagnostics rather than replayed from a fixture.',
+      'β as the swarm actually used it: one measured value per iteration, read back from the solver’s diagnostics rather than replayed from a fixture. Different particles get different β when they cover legs with different volatility.',
     apply: (_d, c) => {
       c.pause()
     },

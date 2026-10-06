@@ -7,12 +7,11 @@ from fastapi import APIRouter, HTTPException, status, Body
 
 from app.core.logging import get_logger
 from app.schemas.optimize import OptimizeRequest, OptimizeResponse
-from app.services.optimize_service import OptimizeService
+from app.services.runtime import optimize_service as _optimize_service
 
 router = APIRouter()
 logger = get_logger("marga.api.v1.optimize")
 
-_optimize_service = OptimizeService()
 _executor = ThreadPoolExecutor(max_workers=2)
 
 
@@ -20,15 +19,16 @@ _executor = ThreadPoolExecutor(max_workers=2)
     "/optimize",
     response_model=OptimizeResponse,
     status_code=status.HTTP_200_OK,
-    summary="Optimize a scenario (named or custom)",
+    summary="Optimize a scenario (named, custom, or graph)",
     description=(
-        "Run a solver over either a deterministic in-code scenario (mode='named') "
-        "or a custom static scenario (mode='custom'). Solvers: 'ortools' (classical "
-        "baseline), 'qpso' (fixed-schedule QPSO), 'va_qpso' (volatility-adaptive QPSO). "
-        "QPSO responses include a measured convergence trace. "
-        "Custom scenarios use a synthetic, straight-line travel-time approximation "
-        "(complete in-memory graph with haversine distances and the existing default speed) "
-        "— not real road-network routing."
+        "Run a solver over an in-code scenario (mode='named'), a custom static "
+        "scenario (mode='custom'), or a fleet instance generated from a real "
+        "OSM road network (mode='graph'). Solvers: 'ortools' (classical "
+        "baseline), 'qpso' (fixed-β QPSO), 'va_qpso' (volatility-adaptive QPSO). "
+        "Graph mode returns road-following route geometry and, when a traffic "
+        "feed is configured, the live readings used to drive adaptive β. "
+        "Custom scenarios use a straight-line, haversine travel-time "
+        "approximation — not real road routing."
     ),
 )
 def optimize(body: OptimizeRequest) -> OptimizeResponse:
