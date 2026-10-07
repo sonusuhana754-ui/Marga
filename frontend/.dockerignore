@@ -1,0 +1,16 @@
+node_modules
+dist
+.git
+.gitignore
+
+# Local env overrides must never reach the image: .env.local would beat
+# .env.production in Vite and bake this machine's localhost API URL into the
+# bundle. VITE_API_BASE comes from the build arg instead.
+.env.local
+.env.*.local
+.env.development
+.env.development.local
+
+*.log
+Dockerfile
+.dockerignore

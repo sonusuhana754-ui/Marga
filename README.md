@@ -55,6 +55,17 @@ Other facts the UI states rather than hides:
 ## Run it
 
 ```bash
+# whole stack in Docker: Postgres + API on 8000 + UI on 3000
+docker compose up --build
+# open http://localhost:3000 — /api/* is proxied by nginx to the backend,
+# so the bundle needs no CORS setup and no hostname baked into it
+```
+
+Serving the UI and API from different hosts: build with
+`--build-arg VITE_API_BASE=https://api.example.com/api/v1` (baked at build time,
+it overrides any `.env` file in the build context).
+
+```bash
 # backend (port 8000 by default)
 cd backend
 python3 -m venv .venv && . .venv/bin/activate
