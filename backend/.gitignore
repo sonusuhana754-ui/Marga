@@ -48,3 +48,4 @@ nosetests.xml
 coverage.xml
 *.cover
 *.log
+.vercel

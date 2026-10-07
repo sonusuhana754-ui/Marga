@@ -128,13 +128,30 @@ Stated plainly, because the README does not hide deployment facts either:
   loaded graphs under `/tmp`, so a cold instance rehydrates a graph key
   instead of 404ing. `/tmp` is per-instance: a genuinely fresh instance pays
   one Overpass download per graph.
-- **The function bundle needs Large Functions.** Test dependencies live in
+- **Bundle size is near the limit.** Test dependencies live in
   `requirements-dev.txt`, but the runtime set alone measures **550 MB**
-  installed on Linux (ortools 92, pandas 79, pyogrio/GDAL 97, numpy 71) —
-  over Vercel's standard 500 MB Python limit. The API project therefore needs
-  the Large Functions beta (5 GB, enabled by default on Fluid compute for new
-  projects). If a build fails on size, fall back to running the API in Docker
-  with `docker compose up --build` and point `VITE_API_BASE` at that host.
+  installed on Linux (ortools 92, pandas 79, pyogrio/GDAL 97, numpy 71).
+  Vercel measured the actual function bundle at **414 MB after dependency
+  optimization** and the build succeeded. If a build ever fails on size,
+  enable Large Functions (5 GB, default on Fluid compute for new projects)
+  or fall back to Docker with `docker compose up --build` and point
+  `VITE_API_BASE` at that host.
+
+Live deployment from this repository:
+
+- UI: `https://marga-ui.vercel.app`
+- API: `https://marga-api.vercel.app`
+
+Git integration is not connected (the Vercel GitHub App is not granted access
+to this repository yet), so redeploys run from a checkout:
+
+```bash
+(cd backend && vercel --prod --yes)
+(cd frontend && vercel --prod --yes --build-env VITE_API_BASE=https://marga-api.vercel.app/api/v1)
+```
+
+After changing `BACKEND_CORS_ORIGINS`, redeploy the API project so the new
+origins take effect.
 
 ## Known gaps
 

@@ -21,3 +21,6 @@ nohup.out
 
 # osmnx Overpass HTTP cache (backend/cache) — re-downloadable OSM responses
 backend/cache/
+
+# Vercel project links (created by `vercel link`)
+.vercel/
