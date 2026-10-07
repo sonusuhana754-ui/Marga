@@ -54,6 +54,14 @@ class Settings(BaseSettings):
     # API reports as ``volatility_signal: false`` instead of simulating data.
     TOMTOM_API_KEY: str = ""
 
+    # Graph storage. Serverless hosts (Vercel, Cloud Run) give the filesystem
+    # only /tmp and recycle processes, so both directories must point there:
+    # OSMnx writes its Overpass response cache to OSMNX_CACHE_DIR, and
+    # GRAPH_CACHE_DIR persists loaded graphs across cold starts. Empty means
+    # memory only, which is the default and matches plain uvicorn.
+    OSMNX_CACHE_DIR: str = "./cache"
+    GRAPH_CACHE_DIR: str = ""
+
     # Database Configuration
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"

@@ -91,12 +91,50 @@ Point the frontend at a non-default backend with `VITE_API_BASE` in
 
 ```bash
 # tests
-cd backend && python3 -m pytest -q     # 156 tests
+cd backend && pip install -r requirements-dev.txt && python3 -m pytest -q  # 164 tests
 cd frontend && npm test && npm run lint && npm run build
 ```
 
 Swagger: `http://127.0.0.1:8000/docs`. Health: `GET /health` (reports `degraded`
 without Postgres — no endpoint the UI uses touches the database).
+
+## Deploy on Vercel
+
+Two projects from this one repository, each with its own Root Directory —
+they build independently and talk over HTTPS:
+
+| Project | Root Directory | Detected as |
+| --- | --- | --- |
+| API | `backend` | FastAPI, entrypoint `app/main.py`, Python 3.12 (`.python-version`), `maxDuration` 300s (`backend/vercel.json`) |
+| UI | `frontend` | Vite, output `dist` |
+
+Environment variables (build-time for the UI, runtime for the API):
+
+| Project | Variable | Value |
+| --- | --- | --- |
+| UI | `VITE_API_BASE` | `https://<api-project>.vercel.app/api/v1` |
+| API | `BACKEND_CORS_ORIGINS` | `https://<ui-project>.vercel.app` (comma-separated for more) |
+| API | `OSMNX_CACHE_DIR` | `/tmp/marga-cache` |
+| API | `GRAPH_CACHE_DIR` | `/tmp/marga-graphs` |
+| API | `DEBUG` / `ENVIRONMENT` | `false` / `production` |
+| API | `TOMTOM_API_KEY` | optional — live traffic feed, `null` without it |
+
+Stated plainly, because the README does not hide deployment facts either:
+
+- **No Postgres is provisioned on Vercel.** `/api/v1/health` reports
+  `degraded`; no endpoint the UI uses touches the database.
+- **Filesystem outside `/tmp` is read-only and processes are recycled.**
+  `OSMNX_CACHE_DIR` moves the Overpass cache and `GRAPH_CACHE_DIR` persists
+  loaded graphs under `/tmp`, so a cold instance rehydrates a graph key
+  instead of 404ing. `/tmp` is per-instance: a genuinely fresh instance pays
+  one Overpass download per graph.
+- **The function bundle needs Large Functions.** Test dependencies live in
+  `requirements-dev.txt`, but the runtime set alone measures **550 MB**
+  installed on Linux (ortools 92, pandas 79, pyogrio/GDAL 97, numpy 71) —
+  over Vercel's standard 500 MB Python limit. The API project therefore needs
+  the Large Functions beta (5 GB, enabled by default on Fluid compute for new
+  projects). If a build fails on size, fall back to running the API in Docker
+  with `docker compose up --build` and point `VITE_API_BASE` at that host.
 
 ## Known gaps
 
@@ -104,7 +142,9 @@ without Postgres — no endpoint the UI uses touches the database).
   in the cost; the single-vehicle `/route` path is the only place they bind.
 - The OSM graph cache is in-memory: restarting the backend forgets loaded
   areas (osmnx's Overpass HTTP cache in `backend/cache/` makes re-downloading
-  fast, but a restart still needs one `POST /graphs/load`).
+  fast, but a restart still needs one `POST /graphs/load`). Setting
+  `GRAPH_CACHE_DIR` persists graphs to disk so a restarted process finds them
+  again; it is unset by default.
 - VA-QPSO beating the fixed-β anchor is preliminary (2 of 5 seeds on
   `grid_cvrp_25`), and OR-Tools still wins on cost on every instance tested —
   the table above is the measurement, not a marketing number.

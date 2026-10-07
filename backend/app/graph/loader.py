@@ -35,6 +35,13 @@ def load_graph(
     """
     import osmnx as ox
 
+    from app.core.config import settings
+
+    # Point OSMnx at a writable Overpass cache. The default ./cache is only
+    # writable under uvicorn; on serverless hosts the working directory is
+    # read-only and the cache must live under /tmp.
+    ox.settings.cache_folder = settings.OSMNX_CACHE_DIR
+
     if center is None and not place:
         raise ValueError("load_graph requires a place name or a center point")
     if center is not None and len(center) != 2:
